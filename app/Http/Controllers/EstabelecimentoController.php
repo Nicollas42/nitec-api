@@ -65,7 +65,7 @@ class EstabelecimentoController extends Controller
     }
 
     /**
-     * Gera um token de API (Sanctum) para login temporário no modo suporte.2
+     * Gera um token de API (Sanctum) para login temporário no modo suporte.
      * @param string $tenant_id
      * @return JsonResponse
      */
