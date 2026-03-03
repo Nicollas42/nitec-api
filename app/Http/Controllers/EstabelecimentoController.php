@@ -51,17 +51,29 @@ class EstabelecimentoController extends Controller
             'telefone' => 'nullable|string',
         ]);
 
+        // 1. Cria o Inquilino na base central
         $tenant = Tenant::create([
             'id' => $dados['id_do_bar'],
             'ativo' => true, 
             'nome_dono' => $dados['nome_dono'],
             'email_dono' => $dados['email_dono'],
-            'senha_inicial' => $dados['senha_dono'], // AGORA SALVAMOS A SENHA INICIAL AQUI!
+            'senha_inicial' => $dados['senha_dono'], 
             'cnpj' => $dados['cnpj'] ?? 'Não informado',
             'telefone' => $dados['telefone'] ?? 'Não informado',
         ]);
 
+        // 2. Associa o Domínio
         $tenant->domains()->create(['domain' => $dados['dominio']]);
+
+        // 3. O PULO DO GATO: Entramos no banco do cliente recém-criado e inserimos o dono
+        $tenant->run(function () use ($dados) {
+            \App\Models\User::create([
+                'name' => $dados['nome_dono'],
+                'email' => $dados['email_dono'],
+                'password' => \Illuminate\Support\Facades\Hash::make($dados['senha_dono']),
+                'tipo_usuario' => 'dono', // Define o cargo máximo no PDV
+            ]);
+        });
 
         return response()->json(['sucesso' => true, 'mensagem' => 'Cliente provisionado!']);
     }

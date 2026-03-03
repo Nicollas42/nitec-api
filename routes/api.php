@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\AutenticacaoController;
 use App\Http\Controllers\EstabelecimentoController;
+use App\Http\Controllers\Auth\RecuperacaoSenhaController;
 
 /*
 |--------------------------------------------------------------------------
@@ -16,6 +17,9 @@ Route::prefix('admin')->group(function () {
     // Login Exclusivo para o Painel Central (Admin Master)
     // URL Final: POST /api/admin/login
     Route::post('/login', [AutenticacaoController::class, 'login']);
+
+    Route::post('/esqueci-senha', [RecuperacaoSenhaController::class, 'solicitar_link']);
+    Route::post('/resetar-senha', [RecuperacaoSenhaController::class, 'resetar_senha']);
 
     /**
      * PAINEL ADMINISTRATIVO (Super Admin)
