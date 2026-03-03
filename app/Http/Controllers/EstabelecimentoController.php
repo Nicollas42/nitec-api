@@ -1,106 +1,128 @@
 <?php
+// C:\PDP\nitec_api\app\Http\Controllers\EstabelecimentoController.php
 
 namespace App\Http\Controllers;
 
-use App\Http\Controllers\Controller;
 use App\Models\Tenant;
-use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Log;
 
 class EstabelecimentoController extends Controller
 {
     /**
-     * Lista todos os bares cadastrados no sistema central.
-     * @return JsonResponse
+     * Lista todos os estabelecimentos separados por status (Ativos e Inativos).
      */
-    public function listar_estabelecimentos(): JsonResponse
+    public function listar_estabelecimentos()
     {
-        try {
-            $todos_os_bares = Tenant::with('domains')->get();
-            return response()->json(['sucesso' => true, 'dados' => $todos_os_bares], 200);
-        } catch (\Exception $e) {
-            return response()->json(['sucesso' => false, 'erro' => $e->getMessage()], 500);
-        }
+        $todos = Tenant::with('domains')->get();
+
+        // Função para forçar a extração dos dados mágicos do pacote Tenancy
+        $formatar_tenant = function ($tenant) {
+            return [
+                'id' => $tenant->id,
+                'ativo' => $tenant->ativo,
+                'nome_dono' => $tenant->nome_dono,         // Extrai do JSON
+                'email_dono' => $tenant->email_dono,       // Extrai do JSON
+                'senha_inicial' => $tenant->senha_inicial, // Extrai do JSON
+                'cnpj' => $tenant->cnpj,                   // Extrai do JSON
+                'telefone' => $tenant->telefone,           // Extrai do JSON
+                'domains' => $tenant->domains,
+            ];
+        };
+
+        return response()->json([
+            'sucesso' => true,
+            'ativos' => $todos->where('ativo', true)->map($formatar_tenant)->values(),
+            'inativos' => $todos->where('ativo', false)->map($formatar_tenant)->values(),
+        ]);
     }
 
     /**
-     * Registra um novo bar e popula o banco com dados iniciais.
-     * @param Request $requisicao
-     * @return JsonResponse
+     * Provisiona um novo cliente SaaS na infraestrutura multi-tenant.
      */
-    public function registrar_novo_bar(Request $requisicao): JsonResponse
+    public function registrar_novo_bar(Request $request)
     {
-        try {
-            $dados = $requisicao->validate([
-                'id_do_bar'  => 'required|string|unique:tenants,id',
-                'dominio'    => 'required|string|unique:domains,domain',
-                'nome_dono'  => 'required|string',
-                'email_dono' => 'required|email',
-                'senha_dono' => 'required|string|min:6'
-            ]);
+        $dados = $request->validate([
+            'id_do_bar' => 'required|string|unique:tenants,id',
+            'dominio' => 'required|string|unique:domains,domain',
+            'nome_dono' => 'required|string',
+            'email_dono' => 'required|email',
+            'senha_dono' => 'required|string|min:6',
+            'cnpj' => 'nullable|string',
+            'telefone' => 'nullable|string',
+        ]);
 
-            // 1. Cria o registro central e o banco físico
-            $novo_bar = Tenant::create(['id' => $dados['id_do_bar']]);
-            $novo_bar->domains()->create(['domain' => $dados['dominio']]);
+        $tenant = Tenant::create([
+            'id' => $dados['id_do_bar'],
+            'ativo' => true, 
+            'nome_dono' => $dados['nome_dono'],
+            'email_dono' => $dados['email_dono'],
+            'senha_inicial' => $dados['senha_dono'], // AGORA SALVAMOS A SENHA INICIAL AQUI!
+            'cnpj' => $dados['cnpj'] ?? 'Não informado',
+            'telefone' => $dados['telefone'] ?? 'Não informado',
+        ]);
 
-            // 2. Entra no banco do bar e cria o usuário DONO com os dados recebidos
-            $novo_bar->run(function () use ($dados) {
-                User::create([
-                    'name' => $dados['nome_dono'],
-                    'email' => $dados['email_dono'],
-                    'password' => Hash::make($dados['senha_dono']),
-                    'tipo_usuario' => 'cliente' // Nível de acesso do dono do bar
-                ]);
-            });
+        $tenant->domains()->create(['domain' => $dados['dominio']]);
 
-            return response()->json(['sucesso' => true, 'mensagem' => 'Bar e Usuário Dono criados!'], 201);
-
-        } catch (\Exception $e) {
-            Log::error("Falha SaaS: " . $e->getMessage());
-            return response()->json(['sucesso' => false, 'erro' => $e->getMessage()], 500);
-        }
+        return response()->json(['sucesso' => true, 'mensagem' => 'Cliente provisionado!']);
     }
 
     /**
-     * Gera um token de API (Sanctum) para login temporário no modo suporte.
-     * @param string $tenant_id
-     * @return JsonResponse
+     * Ativa ou desativa o acesso de um cliente SaaS.
      */
-    public function gerar_link_suporte(string $tenant_id): JsonResponse
+    public function alternar_status(Request $request, $id)
     {
-        try {
-            $tenant = Tenant::findOrFail($tenant_id);
-            $dominio = $tenant->domains()->first()->domain;
+        $tenant = Tenant::findOrFail($id);
+        
+        // Inverte o status atual
+        $tenant->ativo = !$tenant->ativo;
+        $tenant->save();
 
-            // Entra no banco do cliente e gera um Token de API real
-            $dados_suporte = $tenant->run(function () {
-                $usuario = User::first();
-                if (!$usuario) {
-                    throw new \Exception('O banco deste bar está vazio (sem utilizadores).');
-                }
-                
-                // Apaga tokens antigos de suporte para manter a base de dados limpa
-                $usuario->tokens()->where('name', 'token_suporte')->delete();
-                
-                return [
-                    'token' => $usuario->createToken('token_suporte')->plainTextToken,
-                    'nome' => $usuario->name
-                ];
-            });
+        return response()->json([
+            'sucesso' => true, 
+            'mensagem' => $tenant->ativo ? 'Acesso do cliente Reativado com sucesso!' : 'Acesso do cliente Desativado!'
+        ]);
+    }
 
+    /**
+     * Gera um token mágico de acesso para o modo de suporte.
+     */
+    public function gerar_link_suporte(Request $request, $tenant_id)
+    {
+        $tenant = Tenant::findOrFail($tenant_id);
+
+        if (!$tenant->ativo) {
             return response()->json([
-                'sucesso' => true,
-                'token' => $dados_suporte['token'],
-                'nome_dono' => $dados_suporte['nome'],
-                'api_url' => "http://{$dominio}:8000/api" // Define a URL dinâmica para o Axios
-            ], 200);
-
-        } catch (\Exception $e) {
-            Log::error("Erro no Suporte Nitec: " . $e->getMessage());
-            return response()->json(['sucesso' => false, 'erro' => $e->getMessage()], 500);
+                'sucesso' => false,
+                'mensagem' => 'Não é possível aceder ao suporte de um cliente desativado.'
+            ], 403);
         }
+
+        // Simulação da geração de token. O ideal é você ter um sistema de 
+        // impersonation (representação de usuário) nativo do Sanctum ou gerar um token com prazo curto.
+        $token_temporario = "suporte_temp_" . bin2hex(random_bytes(16));
+
+        return response()->json([
+            'sucesso' => true,
+            'token' => $token_temporario,
+            'nome_dono' => $tenant->nome_dono ?? 'Lojista',
+            'api_url' => "http://{$tenant->id}.nitec.localhost:8000/api"
+        ]);
+    }
+
+
+    /**
+     * Exclui PERMANENTEMENTE o cliente, o seu domínio e o seu banco de dados.
+     */
+    public function excluir_bar($id)
+    {
+        $tenant = Tenant::findOrFail($id);
+        
+        // O método delete() do stancl/tenancy cuida de apagar o banco de dados tenant_xxx
+        $tenant->delete(); 
+
+        return response()->json([
+            'sucesso' => true, 
+            'mensagem' => 'Cliente e banco de dados excluídos permanentemente!'
+        ]);
     }
 }

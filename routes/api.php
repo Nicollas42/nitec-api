@@ -11,23 +11,28 @@ use App\Http\Controllers\EstabelecimentoController;
 |--------------------------------------------------------------------------
 */
 
-// Login Exclusivo para o Painel Central (Admin Master)
-// Obs: Os lojistas fazem login pela mesma rota, mas no arquivo tenant.php
-Route::post('/realizar-login', [AutenticacaoController::class, 'login']);
+Route::prefix('admin')->group(function () {
+    
+    // Login Exclusivo para o Painel Central (Admin Master)
+    // URL Final: POST /api/admin/login
+    Route::post('/login', [AutenticacaoController::class, 'login']);
 
-/**
- * PAINEL ADMINISTRATIVO (Super Admin)
- * Gerencia Bares, Quiosques e Suporte. Protegido via Sanctum.
- */
-Route::prefix('admin')->middleware('auth:sanctum')->group(function () {
-    Route::get('/listar-estabelecimentos', [EstabelecimentoController::class, 'listar_estabelecimentos']);
-    Route::post('/cadastrar-novo-bar', [EstabelecimentoController::class, 'registrar_novo_bar']);
-    Route::get('/gerar-acesso-suporte/{tenant_id}', [EstabelecimentoController::class, 'gerar_link_suporte']);
-});
+    /**
+     * PAINEL ADMINISTRATIVO (Super Admin)
+     * Protegido via Sanctum.
+     */
+    Route::middleware('auth:sanctum')->group(function () {
 
-/**
- * Retorna dados do Admin logado
- */
-Route::middleware('auth:sanctum')->get('/usuario', function (Request $request) {
-    return $request->user();
+        Route::put('/alternar-status-bar/{id}', [EstabelecimentoController::class, 'alternar_status']);
+        Route::delete('/excluir-bar/{id}', [EstabelecimentoController::class, 'excluir_bar']);
+        
+        // Retorna os dados do Admin Logado
+        Route::get('/usuario', function (Request $request) {
+            return $request->user();
+        });
+
+        Route::get('/listar-estabelecimentos', [EstabelecimentoController::class, 'listar_estabelecimentos']);
+        Route::post('/cadastrar-novo-bar', [EstabelecimentoController::class, 'registrar_novo_bar']);
+        Route::get('/gerar-acesso-suporte/{tenant_id}', [EstabelecimentoController::class, 'gerar_link_suporte']);
+    });
 });

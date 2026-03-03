@@ -19,6 +19,8 @@ return [
     'central_domains' => [
         '127.0.0.1',
         'localhost',
+        'nitec.dev.br',        // Produção
+        'nitec.localhost',     // Desenvolvimento Local (Adicione esta linha)
     ],
 
     /**

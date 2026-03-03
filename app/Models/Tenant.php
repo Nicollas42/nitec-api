@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Models; // Esta linha faltava e é a causa do erro 500
+namespace App\Models;
 
 use Stancl\Tenancy\Database\Models\Tenant as BaseTenant;
 use Stancl\Tenancy\Contracts\TenantWithDatabase;
@@ -15,23 +15,16 @@ class Tenant extends BaseTenant implements TenantWithDatabase
     use HasDatabase, HasDomains;
 
     /**
-     * Define os atributos que podem ser preenchidos via create/update.
-     * @var array
-     */
-    protected $fillable = [
-        'id',
-        'data',
-    ];
-
-    /**
-     * Define colunas customizadas se necessário.
+     * Define as colunas físicas na tabela 'tenants'.
      * @return array
      */
     public static function getCustomColumns(): array
     {
         return [
             'id',
-            'data',
+            'ativo',
         ];
     }
+    
+    // O pacote stancl/tenancy já faz todo o resto automaticamente!
 }

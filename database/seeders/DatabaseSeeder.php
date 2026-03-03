@@ -9,17 +9,25 @@ use Illuminate\Support\Facades\Hash;
 class DatabaseSeeder extends Seeder
 {
     /**
-     * Seed the application's database.
-     * Este seeder rodará automaticamente para cada novo bar cadastrado.
+     * Semeia a base de dados central com os dados essenciais de inicialização.
+     * * @return void
      */
     public function run(): void
     {
-        // Criamos o dono do bar padrão
-        User::create([
-            'name' => 'Dono do Estabelecimento',
-            'email' => 'admin@nitecsystem.com.br', // Email padrão de acesso inicial
-            'password' => Hash::make('admin123'), // Senha padrão para o cliente trocar depois
-            'tipo_usuario' => 'cliente', // Define que ele não é o Super Admin da Nitec
-        ]);
+        // Verifica se o admin master já existe para não duplicar em futuros deploys
+        $admin_existe = User::where('email', 'admin.master@nitec.dev.br')->first();
+
+        if (!$admin_existe) {
+            User::create([
+                'name' => 'Administrador Central Nitec',
+                'email' => 'admin.master@nitec.dev.br',
+                'password' => Hash::make('Nitec@Master2026'), // Senha padrão de produção
+                'tipo_usuario' => 'admin_master',
+            ]);
+            
+            $this->command->info('Usuário Admin Master gerado com sucesso.');
+        } else {
+            $this->command->info('O usuário Admin Master já existe na base de dados central.');
+        }
     }
 }
