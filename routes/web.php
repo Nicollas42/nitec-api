@@ -1,7 +1,8 @@
 <?php
 use Illuminate\Support\Facades\Route;
 
-// Rota que redireciona qualquer tentativa de acesso para o Vue.js
+// Rota Curinga que redireciona qualquer tentativa de acesso para o Vue.js
+// A REGRA MÁGICA: "(?!api)" significa "Capture tudo, EXCETO se começar com 'api'"
 Route::get('/{any}', function () {
-    return view('welcome'); // O nome do seu ficheiro Blade principal (ex: welcome.blade.php)
-})->where('any', '.*');
+    return view('welcome'); // O seu ficheiro Blade principal
+})->where('any', '^(?!api).*$');

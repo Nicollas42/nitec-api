@@ -98,26 +98,46 @@ class EstabelecimentoController extends Controller
     /**
      * Gera um token mágico de acesso para o modo de suporte.
      */
-    public function gerar_link_suporte(Request $request, $tenant_id)
+    public function gerar_link_suporte($tenant_id)
     {
-        $tenant = Tenant::findOrFail($tenant_id);
-
-        if (!$tenant->ativo) {
-            return response()->json([
-                'sucesso' => false,
-                'mensagem' => 'Não é possível aceder ao suporte de um cliente desativado.'
-            ], 403);
+        $tenant = \App\Models\Tenant::find($tenant_id);
+        
+        if (!$tenant) {
+            return response()->json(['sucesso' => false, 'mensagem' => 'Cliente não encontrado.'], 404);
         }
 
-        // Simulação da geração de token. O ideal é você ter um sistema de 
-        // impersonation (representação de usuário) nativo do Sanctum ou gerar um token com prazo curto.
-        $token_temporario = "suporte_temp_" . bin2hex(random_bytes(16));
+        // Recupera o domínio para enviarmos ao Frontend
+        $dominio = $tenant->domains()->first()->domain;
+        
+        // 1. O PULO DO GATO: Inicializamos o banco do Inquilino!
+        tenancy()->initialize($tenant);
+
+        // 2. Procuramos quem é o dono desta loja específica
+        $dono_da_loja = \App\Models\User::where('tipo_usuario', 'dono')->first();
+        
+        if (!$dono_da_loja) {
+            tenancy()->end();
+            return response()->json(['sucesso' => false, 'mensagem' => 'Dono da loja não localizado.'], 404);
+        }
+
+        // 3. Geramos o token DENTRO da tabela personal_access_tokens do Inquilino
+        // Disfarçamo-nos de dono da loja temporariamente!
+        $token_suporte = $dono_da_loja->createToken('acesso_suporte_admin')->plainTextToken;
+        $nome_dono = $dono_da_loja->name;
+
+        // 4. Fechamos a conexão com o Inquilino
+        tenancy()->end();
+
+        // 5. Devolvemos o token mágico para o Vue entrar pela porta da frente
+        $eh_local = app()->environment('local');
+        $protocolo = $eh_local ? 'http://' : 'https://';
+        $porta = $eh_local ? ':8000' : '';
 
         return response()->json([
             'sucesso' => true,
-            'token' => $token_temporario,
-            'nome_dono' => $tenant->nome_dono ?? 'Lojista',
-            'api_url' => "http://{$tenant->id}.nitec.localhost:8000/api"
+            'token' => $token_suporte,
+            'api_url' => "{$protocolo}{$dominio}{$porta}/api",
+            'nome_dono' => $nome_dono
         ]);
     }
 

@@ -9,13 +9,9 @@ class Produto extends Model
 {
     use HasFactory;
 
-    /**
-     * Campos permitidos para gravação em massa.
-     * @var array
-     */
     protected $fillable = [
         'nome_produto',
-        'codigo_barras',
+        'codigo_barras', // NOVO CAMPO ADICIONADO
         'preco_venda',
         'estoque_atual'
     ];

@@ -21,15 +21,14 @@ Route::middleware([
     'api', 
     InitializeTenancyByDomain::class,
     PreventAccessFromCentralDomains::class,
-])->prefix('api')->group(function () {
+])->prefix('api')->group(function () { // <-- O prefixo de volta aqui!
 
-    // 1. Rota de Login Isolada (Bate na tabela users do tenant_xxx)
+    // 1. Rota de Login Isolada
     Route::post('/realizar-login', [AutenticacaoController::class, 'login']);
 
     // 2. Rotas Protegidas do Lojista
     Route::middleware('auth:sanctum')->group(function () {
         
-        // Retorna os dados do usuário do bar logado
         Route::get('/usuario', function (Request $request) {
             return $request->user();
         });

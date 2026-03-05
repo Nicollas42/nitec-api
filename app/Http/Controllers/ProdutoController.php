@@ -7,10 +7,6 @@ use App\Models\Produto;
 
 class ProdutoController extends Controller
 {
-    /**
-     * Lista todos os produtos cadastrados.
-     * * @return \Illuminate\Http\JsonResponse
-     */
     public function listar_produtos()
     {
         // Retorna os produtos mais recentes primeiro
@@ -18,15 +14,11 @@ class ProdutoController extends Controller
         return response()->json(['produtos' => $lista]);
     }
 
-    /**
-     * Salva um novo produto no banco.
-     * * @param \Illuminate\Http\Request $requisicao
-     * * @return \Illuminate\Http\JsonResponse
-     */
     public function cadastrar_produto(Request $requisicao)
     {
         $dados_validados = $requisicao->validate([
             'nome_produto' => 'required|string|max:255',
+            'codigo_barras' => 'nullable|string|max:100', // NOVO: Validação Opcional
             'preco_venda' => 'required|numeric',
             'estoque_atual' => 'required|integer'
         ]);
