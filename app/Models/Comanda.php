@@ -15,6 +15,7 @@ class Comanda extends Model
         'usuario_id',
         'status_comanda', 
         'valor_total',
+        'tipo_conta',
     ];
 
     /**

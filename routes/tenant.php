@@ -11,22 +11,14 @@ use App\Http\Controllers\ComandaController;
 use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
 use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
 
-/*
-|--------------------------------------------------------------------------
-| Tenant API Routes (Isolamento Lógico do Lojista)
-|--------------------------------------------------------------------------
-*/
-
 Route::middleware([
     'api', 
     InitializeTenancyByDomain::class,
     PreventAccessFromCentralDomains::class,
-])->prefix('api')->group(function () { // <-- O prefixo de volta aqui!
+])->prefix('api')->group(function () { 
 
-    // 1. Rota de Login Isolada
     Route::post('/realizar-login', [AutenticacaoController::class, 'login']);
 
-    // 2. Rotas Protegidas do Lojista
     Route::middleware('auth:sanctum')->group(function () {
         
         Route::get('/usuario', function (Request $request) {
@@ -44,6 +36,11 @@ Route::middleware([
 
         // Gestão de Comandas
         Route::post('/abrir-comanda', [ComandaController::class, 'abrir_comanda_mesa']);
+        Route::post('/fechar-comanda/{id}', [ComandaController::class, 'fechar_comanda']);
+        Route::get('/buscar-comanda/{id}', [ComandaController::class, 'buscar_comanda']); // <-- NOVA ROTA
         Route::get('/listar-comandas', [ComandaController::class, 'listar_todas_comandas']);
+        Route::post('/adicionar-itens-comanda/{id}', [ComandaController::class, 'adicionar_itens_comanda']);
+        Route::post('/alterar-quantidade-item/{id}', [ComandaController::class, 'alterar_quantidade_item']);
+        Route::delete('/remover-item-comanda/{id}', [ComandaController::class, 'remover_item_comanda']);
     });
 });

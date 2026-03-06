@@ -21,7 +21,8 @@ class ComandaController extends Controller
     {
         $dados = $requisicao->validate([
             'mesa_id' => 'required|integer|exists:mesas,id',
-            'nome_cliente' => 'nullable|string|max:100'
+            'nome_cliente' => 'nullable|string|max:100',
+            'tipo_conta' => 'nullable|string|in:geral,individual' // <-- Valida a etiqueta
         ]);
 
         DB::beginTransaction();
@@ -41,30 +42,25 @@ class ComandaController extends Controller
                 'cliente_id' => $cliente_id,
                 'usuario_id' => $requisicao->user()->id,
                 'status_comanda' => 'aberta',
-                'valor_total' => 0
+                'valor_total' => 0,
+                'tipo_conta' => $dados['tipo_conta'] ?? 'geral' // <-- Salva na base de dados
             ]);
 
-            $mesa = Mesa::findOrFail($dados['mesa_id']);
-            $mesa->update(['status_mesa' => 'ocupada']);
+            Mesa::where('id', $dados['mesa_id'])->update(['status_mesa' => 'ocupada']);
 
             DB::commit();
 
             return response()->json([
-                'status' => true, 
-                'mensagem' => 'Comanda aberta com sucesso!', 
+                'sucesso' => true, 
+                'mensagem' => 'Comanda aberta com sucesso!',
                 'comanda' => $nova_comanda
             ], 201);
 
         } catch (\Exception $erro) {
             DB::rollBack();
-            return response()->json([
-                'status' => false, 
-                'mensagem' => 'Erro ao abrir comanda.', 
-                'detalhe' => $erro->getMessage()
-            ], 500);
+            return response()->json(['sucesso' => false, 'mensagem' => 'Erro ao abrir comanda.', 'detalhe' => $erro->getMessage()], 500);
         }
     }
-
     /**
      * Lista todas as comandas do sistema com suas relações.
      * * @return \Illuminate\Http\JsonResponse
@@ -240,5 +236,46 @@ class ComandaController extends Controller
                 'detalhe' => $erro->getMessage()
             ], 500);
         }
+    }
+
+
+    /**
+     * Busca os dados completos de uma única comanda para o PDV de pagamento.
+     */
+    public function buscar_comanda($id)
+    {
+        $comanda = Comanda::with('listar_itens.buscar_produto')->findOrFail($id);
+        
+        return response()->json([
+            'sucesso' => true, 
+            'dados' => $comanda
+        ]);
+    }
+
+    /**
+     * Confirma o pagamento, fecha a comanda e libera a mesa se estiver vazia.
+     */
+    public function fechar_comanda($id)
+    {
+        $comanda = Comanda::findOrFail($id);
+        $comanda->status_comanda = 'fechada';
+        $comanda->save();
+
+        // Inteligência: Verifica se a mesa tem outras sub-comandas abertas.
+        // Se todas as contas da mesa foram pagas, libera a mesa automaticamente!
+        if ($comanda->mesa_id) {
+            $outras_abertas = Comanda::where('mesa_id', $comanda->mesa_id)
+                                     ->where('status_comanda', 'aberta')
+                                     ->count();
+                                     
+            if ($outras_abertas === 0) {
+                Mesa::where('id', $comanda->mesa_id)->update(['status_mesa' => 'livre']);
+            }
+        }
+
+        return response()->json([
+            'sucesso' => true, 
+            'mensagem' => 'Pagamento efetuado! Comanda fechada com sucesso.'
+        ]);
     }
 }
