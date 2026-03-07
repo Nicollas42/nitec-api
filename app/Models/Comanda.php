@@ -4,10 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes; // 🟢 Importado para exclusão lógica
 
 class Comanda extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes; // 🟢 SoftDeletes ativado
 
     protected $fillable = [
         'mesa_id', 
@@ -16,11 +17,21 @@ class Comanda extends Model
         'status_comanda', 
         'valor_total',
         'tipo_conta',
+        'data_hora_abertura',  // 🟢 Novo campo para BI
+        'data_hora_fechamento' // 🟢 Novo campo para BI
+    ];
+
+    /**
+     * Casts para garantir que as datas sejam tratadas como objetos Carbon/Datetime.
+     */
+    protected $casts = [
+        'data_hora_abertura' => 'datetime',
+        'data_hora_fechamento' => 'datetime',
     ];
 
     /**
      * Retorna os itens consumidos nesta comanda específica.
-     * * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
      */
     public function listar_itens()
     {
@@ -29,7 +40,7 @@ class Comanda extends Model
 
     /**
      * Retorna a mesa atrelada a esta comanda.
-     * * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
      */
     public function buscar_mesa()
     {
@@ -38,13 +49,17 @@ class Comanda extends Model
 
     /**
      * Retorna o cliente dono desta comanda (caso seja individual).
-     * * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
      */
     public function buscar_cliente()
     {
         return $this->belongsTo(Cliente::class, 'cliente_id');
     }
 
+    /**
+     * Retorna o utilizador (atendente) que abriu a comanda.
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     */
     public function buscar_usuario()
     {
         return $this->belongsTo(User::class, 'usuario_id');

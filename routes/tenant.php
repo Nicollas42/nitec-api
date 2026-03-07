@@ -8,6 +8,7 @@ use App\Http\Controllers\Auth\AutenticacaoController;
 use App\Http\Controllers\MesaController;
 use App\Http\Controllers\ProdutoController;
 use App\Http\Controllers\ComandaController;
+use App\Http\Controllers\AnalisesController; // 🟢 IMPORTAÇÃO ADICIONADA
 use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
 use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
 
@@ -37,10 +38,13 @@ Route::middleware([
         // Gestão de Comandas
         Route::post('/abrir-comanda', [ComandaController::class, 'abrir_comanda_mesa']);
         Route::post('/fechar-comanda/{id}', [ComandaController::class, 'fechar_comanda']);
-        Route::get('/buscar-comanda/{id}', [ComandaController::class, 'buscar_comanda']); // <-- NOVA ROTA
+        Route::get('/buscar-comanda/{id}', [ComandaController::class, 'buscar_comanda']); 
         Route::get('/listar-comandas', [ComandaController::class, 'listar_todas_comandas']);
         Route::post('/adicionar-itens-comanda/{id}', [ComandaController::class, 'adicionar_itens_comanda']);
         Route::post('/alterar-quantidade-item/{id}', [ComandaController::class, 'alterar_quantidade_item']);
         Route::delete('/remover-item-comanda/{id}', [ComandaController::class, 'remover_item_comanda']);
+
+        // 🟢 Inteligência de Negócios (BI)
+        Route::get('/analises/dashboard', [AnalisesController::class, 'obter_resumo_dashboard']); 
     });
 });

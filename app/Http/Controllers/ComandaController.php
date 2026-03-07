@@ -7,8 +7,8 @@ use Illuminate\Support\Facades\DB;
 use App\Models\Mesa;
 use App\Models\Comanda;
 use App\Models\Cliente;
-use App\Models\ComandaItem; // <- O Laravel precisava disto
-use App\Models\Produto;     // <- E disto!
+use App\Models\ComandaItem; 
+use App\Models\Produto;     
 
 class ComandaController extends Controller
 {
@@ -22,7 +22,8 @@ class ComandaController extends Controller
         $dados = $requisicao->validate([
             'mesa_id' => 'required|integer|exists:mesas,id',
             'nome_cliente' => 'nullable|string|max:100',
-            'tipo_conta' => 'nullable|string|in:geral,individual' // <-- Valida a etiqueta
+            'tipo_conta' => 'nullable|string|in:geral,individual',
+            'data_hora_abertura' => 'nullable|date' // 🟢 NOVO: Valida a data de abertura do BI
         ]);
 
         DB::beginTransaction();
@@ -43,7 +44,9 @@ class ComandaController extends Controller
                 'usuario_id' => $requisicao->user()->id,
                 'status_comanda' => 'aberta',
                 'valor_total' => 0,
-                'tipo_conta' => $dados['tipo_conta'] ?? 'geral' // <-- Salva na base de dados
+                'tipo_conta' => $dados['tipo_conta'] ?? 'geral',
+                // 🟢 NOVO: Regista a hora enviada pelo Vue ou a hora do servidor
+                'data_hora_abertura' => $dados['data_hora_abertura'] ?? now() 
             ]);
 
             Mesa::where('id', $dados['mesa_id'])->update(['status_mesa' => 'ocupada']);
@@ -61,6 +64,7 @@ class ComandaController extends Controller
             return response()->json(['sucesso' => false, 'mensagem' => 'Erro ao abrir comanda.', 'detalhe' => $erro->getMessage()], 500);
         }
     }
+    
     /**
      * Lista todas as comandas do sistema com suas relações.
      * * @return \Illuminate\Http\JsonResponse
@@ -99,7 +103,7 @@ class ComandaController extends Controller
             $valor_adicional_total = 0;
 
             foreach ($dados['itens'] as $item) {
-                // Regista o item na comanda
+                // Regista o item na comanda (o Laravel preenche o data_hora_lancamento automaticamente)
                 ComandaItem::create([
                     'comanda_id' => $comanda->id,
                     'produto_id' => $item['produto_id'],
@@ -254,11 +258,16 @@ class ComandaController extends Controller
 
     /**
      * Confirma o pagamento, fecha a comanda e libera a mesa se estiver vazia.
+     * 🟢 NOVO: Recebe o Request para capturar a hora de fechamento do BI.
      */
-    public function fechar_comanda($id)
+    public function fechar_comanda(Request $requisicao, $id)
     {
         $comanda = Comanda::findOrFail($id);
         $comanda->status_comanda = 'fechada';
+        
+        // 🟢 NOVO: Regista o fim exato do atendimento
+        $comanda->data_hora_fechamento = $requisicao->input('data_hora_fechamento', now()); 
+        
         $comanda->save();
 
         // Inteligência: Verifica se a mesa tem outras sub-comandas abertas.
