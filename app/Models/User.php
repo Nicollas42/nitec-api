@@ -5,29 +5,28 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Laravel\Sanctum\HasApiTokens; // <- Esta é a ferramenta que evita o Erro 500
+use Laravel\Sanctum\HasApiTokens; 
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable; // <- Tem de estar declarada aqui
+    use HasApiTokens, HasFactory, Notifiable; 
 
     /**
      * Atributos que podem ser preenchidos em massa.
-     *
-     * @var array<int, string>
      */
     protected $fillable = [
         'name',
         'email',
+        'telefone',          // 🟢 Adicionado para contato
         'password',
-        'tipo_usuario', // Padrão snake_case aplicado
+        'tipo_usuario',
+        'status_conta',      // 'ativo', 'inativo' ou 'demitido'
+        'tipo_contrato',     // 'fixo' ou 'temporario'
+        'expiracao_acesso',  // Data/Hora de bloqueio automático para temporários
     ];
 
     /**
      * Atributos que devem ser ocultados para serialização.
-     *
-     * @var array<int, string>
      */
     protected $hidden = [
         'password',
@@ -36,14 +35,13 @@ class User extends Authenticatable
 
     /**
      * Atributos que devem ser convertidos (cast).
-     *
-     * @return array<string, string>
      */
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'expiracao_acesso' => 'datetime', // Garante que é tratado como Data/Hora pelo Carbon
         ];
     }
 }

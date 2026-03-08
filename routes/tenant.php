@@ -8,7 +8,8 @@ use App\Http\Controllers\Auth\AutenticacaoController;
 use App\Http\Controllers\MesaController;
 use App\Http\Controllers\ProdutoController;
 use App\Http\Controllers\ComandaController;
-use App\Http\Controllers\AnalisesController; // 🟢 IMPORTAÇÃO ADICIONADA
+use App\Http\Controllers\AnalisesController;
+use App\Http\Controllers\FuncionarioController; // 🟢 IMPORTAÇÃO
 use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
 use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
 
@@ -45,6 +46,16 @@ Route::middleware([
         Route::delete('/remover-item-comanda/{id}', [ComandaController::class, 'remover_item_comanda']);
 
         // 🟢 Inteligência de Negócios (BI)
-        Route::get('/analises/dashboard', [AnalisesController::class, 'obter_resumo_dashboard']); 
+        Route::get('/analises/dashboard', [AnalisesController::class, 'obter_resumo_dashboard']);
+
+        // 🟢 Gestão de Equipa (Funcionários e Temporários)
+        Route::get('/equipe/listar', [FuncionarioController::class, 'listar_funcionarios']);
+        Route::post('/equipe/cadastrar', [FuncionarioController::class, 'cadastrar_funcionario']);
+        Route::post('/equipe/alternar-status/{id}', [FuncionarioController::class, 'alternar_status']);
+
+        Route::post('/equipe/demitir/{id}', [FuncionarioController::class, 'demitir']);
+        Route::post('/equipe/readmitir/{id}', [FuncionarioController::class, 'readmitir']);
+        Route::post('/equipe/editar/{id}', [FuncionarioController::class, 'editar_funcionario']);
+
     });
 });
