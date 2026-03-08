@@ -97,4 +97,77 @@ class DashboardService
             'vendas_por_dia' => $vendas_por_dia      
         ];
     }
+
+    // 🟢 Log de Auditoria de Estoque
+    public function obter_log_auditoria($data_inicio, $data_fim)
+    {
+        // 1. Buscar todas as Entradas (Compras)
+        $entradas = \App\Models\EstoqueEntrada::with(['produto' => function($q) { $q->withTrashed(); }, 'usuario'])
+            ->whereBetween('created_at', [$data_inicio, $data_fim])
+            ->get()
+            ->map(function($item) {
+                return [
+                    'tipo_evento' => 'entrada',
+                    'data_hora' => $item->created_at,
+                    'icone' => '📦',
+                    'cor' => 'blue',
+                    'titulo' => "Entrada de Estoque: " . ($item->produto->nome_produto ?? 'Produto Apagado'),
+                    'descricao' => "Adicionadas {$item->quantidade_adicionada} un. compradas a R$ {$item->custo_unitario_compra} cada.",
+                    'usuario' => $item->usuario->name ?? 'Sistema',
+                    'detalhes_extras' => $item->fornecedor ? "Fornecedor: " . $item->fornecedor : ''
+                ];
+            });
+
+        // 2. Buscar todas as Perdas (Baixas/Quebras)
+        $perdas = \App\Models\EstoquePerda::with(['produto' => function($q) { $q->withTrashed(); }, 'usuario'])
+            ->whereBetween('created_at', [$data_inicio, $data_fim])
+            ->get()
+            ->map(function($item) {
+                return [
+                    'tipo_evento' => 'perda',
+                    'data_hora' => $item->created_at,
+                    'icone' => '📉',
+                    'cor' => 'red',
+                    'titulo' => "Baixa de Estoque: " . ($item->produto->nome_produto ?? 'Produto Apagado'),
+                    'descricao' => "Perda de {$item->quantidade} un. Motivo: {$item->motivo}.",
+                    'usuario' => $item->usuario->name ?? 'Sistema',
+                    'detalhes_extras' => "Prejuízo financeiro: R$ " . $item->custo_total_perda
+                ];
+            });
+
+        // 3. Buscar as Vendas Fechadas (Comandas)
+        $vendas = \App\Models\Comanda::with(['buscar_usuario', 'buscar_mesa', 'listar_itens.buscar_produto' => function($q) { $q->withTrashed(); }])
+            ->where('status_comanda', 'fechada')
+            ->whereBetween('data_hora_fechamento', [$data_inicio, $data_fim])
+            ->get()
+            ->map(function($comanda) {
+                $itens_str = $comanda->listar_itens->take(3)->map(function($i) {
+                    return $i->quantidade . 'x ' . ($i->buscar_produto->nome_produto ?? 'Item Apagado');
+                })->implode(', ');
+                
+                if ($comanda->listar_itens->count() > 3) $itens_str .= ' e mais...';
+
+                $mesa_nome = $comanda->buscar_mesa ? $comanda->buscar_mesa->nome_mesa : 'Balcão/Avulsa';
+
+                return [
+                    'tipo_evento' => 'venda',
+                    'data_hora' => $comanda->data_hora_fechamento,
+                    'icone' => '💰',
+                    'cor' => 'green',
+                    'titulo' => "Venda Concluída: Comanda #{$comanda->id} ({$mesa_nome})",
+                    'descricao' => "Faturou R$ {$comanda->valor_total}.",
+                    'usuario' => $comanda->buscar_usuario->name ?? 'Sistema',
+                    'detalhes_extras' => "Itens: " . $itens_str,
+                    'comanda_raw' => $comanda // Enviamos a comanda completa para caso o dono clique em "Ver Detalhes"
+                ];
+            });
+
+        // 4. Juntar tudo numa linha do tempo unificada e ordenar pela data (Mais recente primeiro)
+        $timeline = collect([...$entradas, ...$perdas, ...$vendas])
+                    ->sortByDesc('data_hora')
+                    ->values()
+                    ->all();
+
+        return $timeline;
+    }
 }

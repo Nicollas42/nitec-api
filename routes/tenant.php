@@ -35,6 +35,9 @@ Route::middleware([
         // Gestão de Produtos
         Route::get('/listar-produtos', [ProdutoController::class, 'listar_produtos']);
         Route::post('/cadastrar-produto', [ProdutoController::class, 'cadastrar_produto']);
+        
+        // 🟢 ROTA PARA ATUALIZAR PRODUTO
+        Route::post('/produtos/editar/{id}', [App\Http\Controllers\ProdutoController::class, 'atualizar_produto']);
 
         // Gestão de Comandas
         Route::post('/abrir-comanda', [ComandaController::class, 'abrir_comanda_mesa']);
@@ -44,6 +47,8 @@ Route::middleware([
         Route::post('/adicionar-itens-comanda/{id}', [ComandaController::class, 'adicionar_itens_comanda']);
         Route::post('/alterar-quantidade-item/{id}', [ComandaController::class, 'alterar_quantidade_item']);
         Route::delete('/remover-item-comanda/{id}', [ComandaController::class, 'remover_item_comanda']);
+        Route::post('/venda-balcao', [\App\Http\Controllers\ComandaController::class, 'venda_balcao']);
+        Route::post('/fechar-comanda/cancelar/{id}', [\App\Http\Controllers\ComandaController::class, 'cancelar_comanda']);
 
         // 🟢 Inteligência de Negócios (BI)
         Route::get('/analises/dashboard', [AnalisesController::class, 'obter_resumo_dashboard']);
@@ -57,5 +62,8 @@ Route::middleware([
         Route::post('/equipe/readmitir/{id}', [FuncionarioController::class, 'readmitir']);
         Route::post('/equipe/editar/{id}', [FuncionarioController::class, 'editar_funcionario']);
 
+        // 🟢 Gestão de Estoque
+        Route::post('/estoque/registrar-perda', [\App\Http\Controllers\EstoqueController::class, 'registrar_perda']);
+        Route::post('/estoque/registrar-entrada', [\App\Http\Controllers\EstoqueController::class, 'registrar_entrada']);
     });
 });

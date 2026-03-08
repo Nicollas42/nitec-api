@@ -24,8 +24,8 @@ class AnalisesController extends Controller
 
         // 2. Chama a Camada de Serviço para fazer o trabalho pesado
         $dados_relatorio = $this->dashboardService->gerar_relatorio_completo($data_inicio, $data_fim);
-
+        $log_auditoria = $this->dashboardService->obter_log_auditoria($data_inicio, $data_fim); // 🟢 CHAMA AQUI
         // 3. Devolve a Resposta
-        return response()->json(array_merge(['sucesso' => true], $dados_relatorio));
+        return response()->json(array_merge(['sucesso' => true, 'log_auditoria' => $log_auditoria], $dados_relatorio));
     }
 }

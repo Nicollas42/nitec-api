@@ -3,121 +3,171 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use App\Models\User;
 use App\Models\Mesa;
 use App\Models\Produto;
 use App\Models\Comanda;
 use App\Models\ComandaItem;
+use App\Models\EstoqueEntrada;
+use App\Models\EstoquePerda;
 
 class TenantFakeDataSeeder extends Seeder
 {
     public function run()
     {
-        $this->command->info('Iniciando a geração de dados fictícios de BI...');
+        $this->command->info('Limpando dados antigos...');
+        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+        EstoquePerda::truncate();
+        EstoqueEntrada::truncate();
+        ComandaItem::truncate();
+        Comanda::truncate();
+        Produto::truncate();
+        Mesa::truncate();
+        User::truncate();
+        DB::statement('SET FOREIGN_KEY_CHECKS=1;');
 
-        // 1. CRIAR GARÇONS
-        $garcons = [];
-        $nomes = ['Carlos Silva', 'Ana Souza', 'Marcos Pedroso'];
-        foreach ($nomes as $index => $nome) {
-            $garcons[] = User::firstOrCreate(
-                ['email' => "garcom{$index}@teste.com"],
-                ['name' => $nome, 'password' => Hash::make('123456'), 'tipo_usuario' => 'garcom']
-            );
-        }
-        $dono = User::first(); // Pega o seu user atual para também ter vendas
+        $this->command->info('Criando Equipe...');
+        $dono = User::create(['name' => 'Dono (Admin)', 'email' => 'admin@restaurante.com', 'password' => Hash::make('123456'), 'tipo_usuario' => 'dono', 'tipo_contrato' => 'fixo']);
+        $garcom1 = User::create(['name' => 'João Silva', 'email' => 'joao@restaurante.com', 'password' => Hash::make('123456'), 'tipo_usuario' => 'garcom', 'tipo_contrato' => 'fixo']);
+        $garcom2 = User::create(['name' => 'Maria Souza', 'email' => 'maria@restaurante.com', 'password' => Hash::make('123456'), 'tipo_usuario' => 'garcom', 'tipo_contrato' => 'fixo']);
+        $garcom3 = User::create(['name' => 'Carlos (Extra)', 'email' => 'carlos@restaurante.com', 'password' => Hash::make('123456'), 'tipo_usuario' => 'garcom', 'tipo_contrato' => 'temporario']);
+        $garcons = [$garcom1->id, $garcom2->id, $garcom3->id];
 
-        // 2. CRIAR MESAS (Garante que há pelo menos 10)
+        $this->command->info('Criando Mesas...');
         $mesas = [];
         for ($i = 1; $i <= 10; $i++) {
-            $mesas[] = Mesa::firstOrCreate(['nome_mesa' => "Mesa VIP {$i}"], ['capacidade_pessoas' => 4]);
+            $mesas[] = Mesa::create(['nome_mesa' => "Mesa 0$i", 'status_mesa' => 'livre', 'capacidade_pessoas' => 4])->id;
         }
 
-        // 3. CRIAR PRODUTOS ESTRATÉGICOS (Curvas A, B e Encalhado)
-        $produtos = [];
-        $produtos[] = Produto::firstOrCreate(['nome_produto' => 'Cerveja IPA Artesanal'], ['categoria' => 'Bebidas (Alcoólicas)', 'preco_venda' => 18.00, 'preco_custo' => 7.00, 'estoque_atual' => 500]);
-        $produtos[] = Produto::firstOrCreate(['nome_produto' => 'Porção de Fritas com Bacon'], ['categoria' => 'Entradas / Petiscos', 'preco_venda' => 45.00, 'preco_custo' => 15.00, 'estoque_atual' => 100]);
-        $produtos[] = Produto::firstOrCreate(['nome_produto' => 'Picanha na Tábua (2 Pessoas)'], ['categoria' => 'Pratos Principais', 'preco_venda' => 120.00, 'preco_custo' => 55.00, 'estoque_atual' => 50]);
-        $produtos[] = Produto::firstOrCreate(['nome_produto' => 'Refrigerante Cola Lata'], ['categoria' => 'Bebidas (Não Alcoólicas)', 'preco_venda' => 7.00, 'preco_custo' => 3.00, 'estoque_atual' => 300]);
+        $this->command->info('Criando Produtos e Estoque Inicial...');
+        $catalogo = [
+            ['nome' => 'Cerveja IPA Artesanal', 'cat' => 'Bebidas (Alcoólicas)', 'custo' => 6.00, 'venda' => 15.00],
+            ['nome' => 'Refrigerante Cola Lata', 'cat' => 'Bebidas (Não Alcoólicas)', 'custo' => 2.50, 'venda' => 6.00],
+            ['nome' => 'Água Mineral', 'cat' => 'Bebidas (Não Alcoólicas)', 'custo' => 1.00, 'venda' => 4.00],
+            ['nome' => 'Picanha na Chapa (500g)', 'cat' => 'Pratos Principais', 'custo' => 45.00, 'venda' => 120.00],
+            ['nome' => 'Porção de Fritas com Bacon', 'cat' => 'Entradas / Petiscos', 'custo' => 12.00, 'venda' => 35.00],
+            ['nome' => 'Hambúrguer Artesanal', 'cat' => 'Pratos Principais', 'custo' => 14.00, 'venda' => 38.00],
+            ['nome' => 'Pudim de Leite', 'cat' => 'Sobremesas', 'custo' => 4.00, 'venda' => 12.00],
+            ['nome' => 'Vinho Tinto Reservado', 'cat' => 'Bebidas (Alcoólicas)', 'custo' => 35.00, 'venda' => 90.00],
+        ];
+
+        $produtos_ids = [];
+        $data_inicial = Carbon::now()->subDays(365); // 1 Ano Atrás
+
+        foreach ($catalogo as $item) {
+            $produto = Produto::create([
+                'nome_produto' => $item['nome'],
+                'categoria' => $item['cat'],
+                'preco_custo' => $item['custo'],
+                'preco_venda' => $item['venda'],
+                'estoque_atual' => 5000 // Estoque gigante para aguentar 1 ano de vendas
+            ]);
+            $produtos_ids[] = $produto;
+
+            // Gera uma entrada de estoque no início do ano (Log de Auditoria)
+            EstoqueEntrada::create([
+                'produto_id' => $produto->id,
+                'usuario_id' => $dono->id,
+                'quantidade_adicionada' => 5000,
+                'custo_unitario_compra' => $item['custo'],
+                'fornecedor' => 'Fornecedor Padrão',
+                'created_at' => $data_inicial,
+                'updated_at' => $data_inicial
+            ]);
+        }
+
+        $this->command->info('Viajando no tempo e gerando 365 dias de vendas (Isso pode levar alguns segundos)...');
         
-        // O Encalhado (Não vamos adicionar vendas para este)
-        Produto::firstOrCreate(['nome_produto' => 'Vinho Tinto Francês Safra 2010'], ['categoria' => 'Bebidas (Alcoólicas)', 'preco_venda' => 350.00, 'preco_custo' => 180.00, 'estoque_atual' => 12]);
+        $comandas_data = [];
+        $itens_data = [];
+        $comanda_id_counter = 1;
 
-        // 4. MÁQUINA DO TEMPO: GERAR 30 DIAS DE VENDAS
-        $hoje = Carbon::now();
-        $total_comandas = 0;
+        // Loop de 365 dias
+        for ($dia = 0; $dia <= 365; $dia++) {
+            $data_atual = $data_inicial->copy()->addDays($dia);
+            $dia_semana = $data_atual->dayOfWeek; // 0 = Domingo, 6 = Sábado
+            
+            // Finais de semana têm mais movimento
+            $eh_fim_de_semana = in_array($dia_semana, [0, 5, 6]);
+            $qtd_comandas_dia = $eh_fim_de_semana ? rand(20, 35) : rand(5, 15);
 
-        // Vamos viajar de 30 dias atrás até ao dia de hoje
-        for ($diasAtras = 30; $diasAtras >= 0; $diasAtras--) {
-            $dataReferencia = clone $hoje;
-            $dataReferencia->subDays($diasAtras);
-
-            // Inteligência: Sextas (5) e Sábados (6) têm o dobro do movimento
-            $diaDaSemana = $dataReferencia->dayOfWeek;
-            $isFimDeSemana = in_array($diaDaSemana, [5, 6]);
-            $qtdComandasNoDia = $isFimDeSemana ? rand(15, 25) : rand(5, 12);
-
-            for ($c = 0; $c < $qtdComandasNoDia; $c++) {
+            for ($c = 0; $c < $qtd_comandas_dia; $c++) {
+                // Horário de abertura concentrado à noite (18h às 23h)
+                $hora_abertura = rand(18, 23);
+                $minuto_abertura = rand(0, 59);
+                $abertura = $data_atual->copy()->setTime($hora_abertura, $minuto_abertura, 0);
                 
-                // Horário de abertura da mesa (Picos entre 18h e 22h)
-                $horaAbertura = clone $dataReferencia;
-                $horaAbertura->setTime(rand(18, 22), rand(0, 59), 0);
+                // Cliente fica entre 40 e 150 minutos
+                $fechamento = $abertura->copy()->addMinutes(rand(40, 150));
 
-                // Tempo que o cliente ficou (entre 45 min e 3 horas)
-                $minutosPermanencia = rand(45, 180);
-                $horaFechamento = clone $horaAbertura;
-                $horaFechamento->addMinutes($minutosPermanencia);
+                $valor_total_comanda = 0;
+                $qtd_itens = rand(2, 6);
 
-                // Escolhe um garçom aleatório (Dono ou Garçons)
-                $todosUsers = array_merge($garcons, [$dono]);
-                $usuarioResponsavel = $todosUsers[array_rand($todosUsers)];
+                for ($i = 0; $i < $qtd_itens; $i++) {
+                    $prod = $produtos_ids[array_rand($produtos_ids)];
+                    $qtd = rand(1, 3);
+                    $valor_total_comanda += ($prod->preco_venda * $qtd);
 
-                $comanda = Comanda::create([
-                    'mesa_id' => $mesas[array_rand($mesas)]->id,
-                    'usuario_id' => $usuarioResponsavel->id,
-                    'status_comanda' => 'fechada',
-                    'tipo_conta' => 'geral',
-                    'data_hora_abertura' => $horaAbertura,
-                    'data_hora_fechamento' => $horaFechamento,
-                    'created_at' => $horaAbertura,
-                    'updated_at' => $horaFechamento,
-                    'valor_total' => 0 // Será calculado abaixo
-                ]);
+                    // Hora do lançamento do item (distribuído durante a permanência)
+                    $hora_lancamento = $abertura->copy()->addMinutes(rand(5, 30));
 
-                $valorTotalComanda = 0;
-                $qtdItensDiferentes = rand(2, 4);
-
-                for ($i = 0; $i < $qtdItensDiferentes; $i++) {
-                    $produto = $produtos[array_rand($produtos)];
-                    
-                    // Se for Cerveja, compram mais quantidade. Se for Prato, compram 1 ou 2.
-                    $quantidade = str_contains($produto->nome_produto, 'Cerveja') ? rand(3, 10) : rand(1, 2);
-
-                    // Hora exata em que o garçom clicou no botão de lançar (Espalhado durante a permanência)
-                    $horaLancamento = clone $horaAbertura;
-                    $horaLancamento->addMinutes(rand(5, $minutosPermanencia - 10));
-
-                    ComandaItem::create([
-                        'comanda_id' => $comanda->id,
-                        'produto_id' => $produto->id,
-                        'quantidade' => $quantidade,
-                        'preco_unitario' => $produto->preco_venda,
-                        'data_hora_lancamento' => $horaLancamento,
-                        'created_at' => $horaLancamento,
-                        'updated_at' => $horaLancamento
-                    ]);
-
-                    $valorTotalComanda += ($quantidade * $produto->preco_venda);
+                    $itens_data[] = [
+                        'comanda_id' => $comanda_id_counter,
+                        'produto_id' => $prod->id,
+                        'quantidade' => $qtd,
+                        'preco_unitario' => $prod->preco_venda,
+                        'data_hora_lancamento' => $hora_lancamento,
+                        'created_at' => $hora_lancamento,
+                        'updated_at' => $hora_lancamento
+                    ];
                 }
 
-                // Atualiza o valor correto da comanda após lançar os itens
-                $comanda->update(['valor_total' => $valorTotalComanda]);
-                $total_comandas++;
+                $comandas_data[] = [
+                    'id' => $comanda_id_counter,
+                    'mesa_id' => $mesas[array_rand($mesas)],
+                    'usuario_id' => $garcons[array_rand($garcons)],
+                    'status_comanda' => 'fechada',
+                    'tipo_conta' => 'geral',
+                    'valor_total' => $valor_total_comanda,
+                    'data_hora_abertura' => $abertura,
+                    'data_hora_fechamento' => $fechamento,
+                    'created_at' => $fechamento,
+                    'updated_at' => $fechamento
+                ];
+
+                $comanda_id_counter++;
+            }
+
+            // Gerar 1 perda aleatória a cada ~10 dias para popular o Log
+            if (rand(1, 10) === 1) {
+                $prod_perdido = $produtos_ids[array_rand($produtos_ids)];
+                $qtd_perdida = rand(1, 2);
+                EstoquePerda::create([
+                    'produto_id' => $prod_perdido->id,
+                    'usuario_id' => $garcons[array_rand($garcons)],
+                    'quantidade' => $qtd_perdida,
+                    'motivo' => array_rand(array_flip(['Quebra / Dano', 'Erro de Cozinha', 'Consumo Interno'])),
+                    'custo_total_perda' => $prod_perdido->preco_custo * $qtd_perdida,
+                    'created_at' => $data_atual->copy()->setTime(15, 0),
+                    'updated_at' => $data_atual->copy()->setTime(15, 0)
+                ]);
             }
         }
 
-        $this->command->info("Sucesso! Foram geradas {$total_comandas} comandas históricas com perfis de consumo realistas.");
+        $this->command->info("Inserindo " . count($comandas_data) . " comandas no banco...");
+        // Inserir em pedaços (chunks) para não estourar a memória RAM do PHP
+        foreach (array_chunk($comandas_data, 1000) as $chunk) {
+            Comanda::insert($chunk);
+        }
+
+        $this->command->info("Inserindo " . count($itens_data) . " itens vendidos no banco...");
+        foreach (array_chunk($itens_data, 1000) as $chunk) {
+            ComandaItem::insert($chunk);
+        }
+
+        $this->command->info('✅ Dados de 1 Ano gerados com sucesso! O seu BI vai ficar lindo!');
     }
 }

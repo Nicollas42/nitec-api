@@ -11,16 +11,10 @@ class Comanda extends Model
     use HasFactory, SoftDeletes; // 🟢 SoftDeletes ativado
 
     protected $fillable = [
-        'mesa_id', 
-        'cliente_id', 
-        'usuario_id',
-        'status_comanda', 
-        'valor_total',
-        'tipo_conta',
-        'data_hora_abertura',  // 🟢 Novo campo para BI
-        'data_hora_fechamento' // 🟢 Novo campo para BI
+    'mesa_id', 'cliente_id', 'usuario_id', 'status_comanda', 'motivo_cancelamento', 
+    'tipo_conta', 'valor_total', 'desconto', 'data_hora_abertura', 'data_hora_fechamento' // 🟢 Adicionado 'desconto'
     ];
-
+    
     /**
      * Casts para garantir que as datas sejam tratadas como objetos Carbon/Datetime.
      */
