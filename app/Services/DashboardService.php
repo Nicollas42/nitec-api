@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\DB;
 use App\Models\Comanda;
 use App\Models\Produto;
+use Carbon\Carbon;
 
 class DashboardService
 {
@@ -21,18 +22,18 @@ class DashboardService
             ->selectRaw('AVG(TIMESTAMPDIFF(MINUTE, data_hora_abertura, data_hora_fechamento)) as media')
             ->value('media') ?? 0;
 
-        // Raio-X da Equipe
+        // 🟢 ATUALIZADO: Buscar Status e Contrato dos Funcionários
         $equipe_base = DB::table('comandas')
             ->join('users', 'comandas.usuario_id', '=', 'users.id')
             ->where('comandas.status_comanda', 'fechada')
             ->whereBetween('comandas.data_hora_fechamento', [$data_inicio, $data_fim])
             ->select(
-                'users.id as usuario_id', 'users.name',
+                'users.id as usuario_id', 'users.name', 'users.status_conta', 'users.tipo_contrato',
                 DB::raw('count(comandas.id) as total_mesas'),
                 DB::raw('sum(comandas.valor_total) as total_vendas'),
                 DB::raw('AVG(TIMESTAMPDIFF(MINUTE, comandas.data_hora_abertura, comandas.data_hora_fechamento)) as tempo_medio_minutos')
             )
-            ->groupBy('users.id', 'users.name')
+            ->groupBy('users.id', 'users.name', 'users.status_conta', 'users.tipo_contrato')
             ->get();
 
         $equipe_itens = DB::table('comanda_itens')
@@ -60,6 +61,9 @@ class DashboardService
 
             return [
                 'name' => $base->name,
+                // 🟢 ATUALIZADO: Dados injetados na resposta
+                'status_conta' => $base->status_conta ?? 'ativo',
+                'tipo_contrato' => $base->tipo_contrato ?? 'fixo',
                 'total_mesas' => $base->total_mesas,
                 'total_vendas' => $base->total_vendas,
                 'tempo_medio_minutos' => $base->tempo_medio_minutos ? round($base->tempo_medio_minutos) : 0,
@@ -70,16 +74,71 @@ class DashboardService
             ];
         })->sortByDesc('total_vendas')->values()->all();
 
-        // Demais Consultas (Vendas por dia, Mapas, ABC, Mesas...)
         $vendas_por_hora = DB::table('comanda_itens')->join('comandas', 'comanda_itens.comanda_id', '=', 'comandas.id')->whereBetween('comandas.data_hora_fechamento', [$data_inicio, $data_fim])->select(DB::raw('HOUR(comanda_itens.data_hora_lancamento) as hora'), DB::raw('count(*) as total_pedidos'))->groupBy('hora')->orderBy('hora')->get();
         $produtos_por_hora = DB::table('comanda_itens')->join('comandas', 'comanda_itens.comanda_id', '=', 'comandas.id')->join('produtos', 'comanda_itens.produto_id', '=', 'produtos.id')->where('comandas.status_comanda', 'fechada')->whereBetween('comandas.data_hora_fechamento', [$data_inicio, $data_fim])->select(DB::raw('HOUR(comanda_itens.data_hora_lancamento) as hora'), 'produtos.id as produto_id', 'produtos.nome_produto', DB::raw('SUM(comanda_itens.quantidade) as quantidade'))->groupBy('hora', 'produtos.id', 'produtos.nome_produto')->get();
-        
         $produtos_vendidos_ids = DB::table('comanda_itens')->join('comandas', 'comanda_itens.comanda_id', '=', 'comandas.id')->whereBetween('comandas.data_hora_fechamento', [$data_inicio, $data_fim])->pluck('produto_id')->unique();
-        $produtos_encalhados = Produto::whereNotIn('id', $produtos_vendidos_ids)->where('estoque_atual', '>', 0)->select('nome_produto', 'estoque_atual', 'preco_venda')->take(10)->get();
+        
+        $produtos_encalhados = Produto::whereNotIn('id', $produtos_vendidos_ids)
+            ->where('estoque_atual', '>', 0)
+            ->select('id', 'nome_produto', 'estoque_atual', 'preco_venda', 'preco_custo', 'data_validade', 'created_at')
+            ->get()
+            ->map(function ($produto) {
+                $ultima_venda = DB::table('comanda_itens')
+                    ->join('comandas', 'comanda_itens.comanda_id', '=', 'comandas.id')
+                    ->where('comanda_itens.produto_id', $produto->id)
+                    ->where('comandas.status_comanda', 'fechada')
+                    ->max('comandas.data_hora_fechamento');
+
+                $data_ref = $ultima_venda ? Carbon::parse($ultima_venda) : Carbon::parse($produto->created_at);
+                $dias_parado = (int) abs(Carbon::now()->startOfDay()->diffInDays($data_ref->startOfDay()));
+
+                $custo_base = $produto->preco_custo > 0 ? $produto->preco_custo : ($produto->preco_venda * 0.5);
+                $prejuizo_potencial = $produto->estoque_atual * $custo_base;
+
+                return [
+                    'nome_produto' => $produto->nome_produto,
+                    'estoque_atual' => $produto->estoque_atual,
+                    'preco_venda' => number_format($produto->preco_venda, 2, '.', ''),
+                    'dias_sem_venda' => $dias_parado,
+                    'data_validade' => $produto->data_validade ? Carbon::parse($produto->data_validade)->format('Y-m-d') : null,
+                    'prejuizo_potencial' => number_format($prejuizo_potencial, 2, '.', '')
+                ];
+            })
+            ->sortByDesc('dias_sem_venda')
+            ->take(15)
+            ->values()
+            ->all();
         
         $ranking_produtos = DB::table('comanda_itens')->join('comandas', 'comanda_itens.comanda_id', '=', 'comandas.id')->join('produtos', 'comanda_itens.produto_id', '=', 'produtos.id')->where('comandas.status_comanda', 'fechada')->whereBetween('comandas.data_hora_fechamento', [$data_inicio, $data_fim])->select('produtos.id as produto_id', 'produtos.nome_produto', DB::raw('SUM(comanda_itens.quantidade) as quantidade_total'), DB::raw('SUM(comanda_itens.quantidade * comanda_itens.preco_unitario) as receita_total'), DB::raw('SUM(comanda_itens.quantidade * (comanda_itens.preco_unitario - COALESCE(produtos.preco_custo, 0))) as lucro_total'))->groupBy('produtos.id', 'produtos.nome_produto')->orderByDesc('receita_total')->get();
         $ranking_mesas = DB::table('comandas')->join('mesas', 'comandas.mesa_id', '=', 'mesas.id')->where('comandas.status_comanda', 'fechada')->whereBetween('comandas.data_hora_fechamento', [$data_inicio, $data_fim])->select('mesas.nome_mesa', DB::raw('count(comandas.id) as total_atendimentos'), DB::raw('sum(comandas.valor_total) as receita_gerada'))->groupBy('mesas.id', 'mesas.nome_mesa')->orderByDesc('receita_gerada')->get();
         $vendas_por_dia = DB::table('comandas')->where('status_comanda', 'fechada')->whereBetween('data_hora_fechamento', [$data_inicio, $data_fim])->select(DB::raw('DAYOFWEEK(data_hora_fechamento) as dia_semana'), DB::raw('sum(valor_total) as faturamento_total'), DB::raw('count(id) as total_comandas'))->groupBy('dia_semana')->orderBy('dia_semana')->get();
+
+        $itens_categoria = DB::table('comanda_itens')
+            ->join('comandas', 'comanda_itens.comanda_id', '=', 'comandas.id')
+            ->join('produtos', 'comanda_itens.produto_id', '=', 'produtos.id')
+            ->where('comandas.status_comanda', 'fechada')
+            ->whereBetween('comandas.data_hora_fechamento', [$data_inicio, $data_fim])
+            ->select('produtos.categoria as nome_categoria', 'produtos.nome_produto', DB::raw('SUM(comanda_itens.quantidade) as quantidade_total'), DB::raw('SUM(comanda_itens.quantidade * comanda_itens.preco_unitario) as receita_total'), DB::raw('SUM(comanda_itens.quantidade * (comanda_itens.preco_unitario - COALESCE(produtos.preco_custo, 0))) as lucro_total'))
+            ->groupBy('produtos.categoria', 'produtos.nome_produto')
+            ->get();
+
+        $vendas_por_categoria = $itens_categoria->groupBy('nome_categoria')->map(function($produtos, $categoria) {
+            return [
+                'nome_categoria' => $categoria ?: 'Sem Categoria',
+                'quantidade_total' => $produtos->sum('quantidade_total'),
+                'receita_total' => $produtos->sum('receita_total'),
+                'lucro_total' => $produtos->sum('lucro_total'),
+                'produtos' => $produtos->sortByDesc('receita_total')->values()->all() 
+            ];
+        })->sortByDesc('receita_total')->values()->all();
+
+        $vendas_cronologicas = DB::table('comandas')
+            ->where('status_comanda', 'fechada')
+            ->whereBetween('data_hora_fechamento', [$data_inicio, $data_fim])
+            ->select(DB::raw('DATE(data_hora_fechamento) as data_venda'), DB::raw('SUM(valor_total) as faturamento_diario'))
+            ->groupBy('data_venda')
+            ->orderBy('data_venda')
+            ->get();
 
         return [
             'indicadores' => [
@@ -94,14 +153,14 @@ class DashboardService
             'encalhados' => $produtos_encalhados,
             'ranking_produtos' => $ranking_produtos,
             'ranking_mesas' => $ranking_mesas,       
-            'vendas_por_dia' => $vendas_por_dia      
+            'vendas_por_dia' => $vendas_por_dia,
+            'vendas_por_categoria' => $vendas_por_categoria, 
+            'vendas_cronologicas' => $vendas_cronologicas    
         ];
     }
 
-    // 🟢 Log de Auditoria de Estoque
     public function obter_log_auditoria($data_inicio, $data_fim)
     {
-        // 1. Buscar todas as Entradas (Compras)
         $entradas = \App\Models\EstoqueEntrada::with(['produto' => function($q) { $q->withTrashed(); }, 'usuario'])
             ->whereBetween('created_at', [$data_inicio, $data_fim])
             ->get()
@@ -114,11 +173,11 @@ class DashboardService
                     'titulo' => "Entrada de Estoque: " . ($item->produto->nome_produto ?? 'Produto Apagado'),
                     'descricao' => "Adicionadas {$item->quantidade_adicionada} un. compradas a R$ {$item->custo_unitario_compra} cada.",
                     'usuario' => $item->usuario->name ?? 'Sistema',
-                    'detalhes_extras' => $item->fornecedor ? "Fornecedor: " . $item->fornecedor : ''
+                    'detalhes_extras' => $item->fornecedor ? "Fornecedor: " . $item->fornecedor : '',
+                    'cliente' => null
                 ];
             });
 
-        // 2. Buscar todas as Perdas (Baixas/Quebras)
         $perdas = \App\Models\EstoquePerda::with(['produto' => function($q) { $q->withTrashed(); }, 'usuario'])
             ->whereBetween('created_at', [$data_inicio, $data_fim])
             ->get()
@@ -131,12 +190,12 @@ class DashboardService
                     'titulo' => "Baixa de Estoque: " . ($item->produto->nome_produto ?? 'Produto Apagado'),
                     'descricao' => "Perda de {$item->quantidade} un. Motivo: {$item->motivo}.",
                     'usuario' => $item->usuario->name ?? 'Sistema',
-                    'detalhes_extras' => "Prejuízo financeiro: R$ " . $item->custo_total_perda
+                    'detalhes_extras' => "Prejuízo financeiro: R$ " . $item->custo_total_perda,
+                    'cliente' => null
                 ];
             });
 
-        // 3. Buscar as Vendas Fechadas (Comandas)
-        $vendas = \App\Models\Comanda::with(['buscar_usuario', 'buscar_mesa', 'listar_itens.buscar_produto' => function($q) { $q->withTrashed(); }])
+        $vendas = \App\Models\Comanda::with(['buscar_usuario', 'buscar_mesa', 'buscar_cliente', 'listar_itens.buscar_produto' => function($q) { $q->withTrashed(); }])
             ->where('status_comanda', 'fechada')
             ->whereBetween('data_hora_fechamento', [$data_inicio, $data_fim])
             ->get()
@@ -158,11 +217,11 @@ class DashboardService
                     'descricao' => "Faturou R$ {$comanda->valor_total}.",
                     'usuario' => $comanda->buscar_usuario->name ?? 'Sistema',
                     'detalhes_extras' => "Itens: " . $itens_str,
-                    'comanda_raw' => $comanda // Enviamos a comanda completa para caso o dono clique em "Ver Detalhes"
+                    'cliente' => $comanda->buscar_cliente->nome_cliente ?? ($comanda->nome_cliente ?? null),
+                    'comanda_raw' => $comanda 
                 ];
             });
 
-        // 4. Juntar tudo numa linha do tempo unificada e ordenar pela data (Mais recente primeiro)
         $timeline = collect([...$entradas, ...$perdas, ...$vendas])
                     ->sortByDesc('data_hora')
                     ->values()

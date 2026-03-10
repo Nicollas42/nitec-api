@@ -9,7 +9,7 @@ use App\Http\Controllers\MesaController;
 use App\Http\Controllers\ProdutoController;
 use App\Http\Controllers\ComandaController;
 use App\Http\Controllers\AnalisesController;
-use App\Http\Controllers\FuncionarioController; // 🟢 IMPORTAÇÃO
+use App\Http\Controllers\FuncionarioController;
 use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
 use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
 
@@ -35,9 +35,7 @@ Route::middleware([
         // Gestão de Produtos
         Route::get('/listar-produtos', [ProdutoController::class, 'listar_produtos']);
         Route::post('/cadastrar-produto', [ProdutoController::class, 'cadastrar_produto']);
-        
-        // 🟢 ROTA PARA ATUALIZAR PRODUTO
-        Route::post('/produtos/editar/{id}', [App\Http\Controllers\ProdutoController::class, 'atualizar_produto']);
+        Route::post('/produtos/editar/{id}', [ProdutoController::class, 'atualizar_produto']);
 
         // Gestão de Comandas
         Route::post('/abrir-comanda', [ComandaController::class, 'abrir_comanda_mesa']);
@@ -45,24 +43,24 @@ Route::middleware([
         Route::get('/buscar-comanda/{id}', [ComandaController::class, 'buscar_comanda']); 
         Route::get('/listar-comandas', [ComandaController::class, 'listar_todas_comandas']);
         Route::post('/adicionar-itens-comanda/{id}', [ComandaController::class, 'adicionar_itens_comanda']);
-        Route::post('/alterar-quantidade-item/{id}', [ComandaController::class, 'alterar_quantidade_item']);
-        Route::delete('/remover-item-comanda/{id}', [ComandaController::class, 'remover_item_comanda']);
-        Route::post('/venda-balcao', [\App\Http\Controllers\ComandaController::class, 'venda_balcao']);
-        Route::post('/fechar-comanda/cancelar/{id}', [\App\Http\Controllers\ComandaController::class, 'cancelar_comanda']);
+        Route::post('/venda-balcao', [ComandaController::class, 'venda_balcao']);
+        Route::post('/fechar-comanda/cancelar/{id}', [ComandaController::class, 'cancelar_comanda']);
+                Route::post('/alterar-quantidade-item/{id_item}', [ComandaController::class, 'alterar_quantidade']);
+        Route::delete('/remover-item-comanda/{id_item}', [ComandaController::class, 'remover_item']);
+        Route::post('/reabrir-comanda/{id}', [ComandaController::class, 'reabrir_comanda']);
 
-        // 🟢 Inteligência de Negócios (BI)
+        // Inteligência de Negócios (BI)
         Route::get('/analises/dashboard', [AnalisesController::class, 'obter_resumo_dashboard']);
 
-        // 🟢 Gestão de Equipa (Funcionários e Temporários)
+        // Gestão de Equipa (Funcionários e Temporários)
         Route::get('/equipe/listar', [FuncionarioController::class, 'listar_funcionarios']);
         Route::post('/equipe/cadastrar', [FuncionarioController::class, 'cadastrar_funcionario']);
         Route::post('/equipe/alternar-status/{id}', [FuncionarioController::class, 'alternar_status']);
-
         Route::post('/equipe/demitir/{id}', [FuncionarioController::class, 'demitir']);
         Route::post('/equipe/readmitir/{id}', [FuncionarioController::class, 'readmitir']);
         Route::post('/equipe/editar/{id}', [FuncionarioController::class, 'editar_funcionario']);
 
-        // 🟢 Gestão de Estoque
+        // Gestão de Estoque
         Route::post('/estoque/registrar-perda', [\App\Http\Controllers\EstoqueController::class, 'registrar_perda']);
         Route::post('/estoque/registrar-entrada', [\App\Http\Controllers\EstoqueController::class, 'registrar_entrada']);
     });

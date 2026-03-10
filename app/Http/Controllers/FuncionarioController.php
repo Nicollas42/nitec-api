@@ -36,9 +36,9 @@ class FuncionarioController extends Controller
         $regras = [
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
-            'telefone' => 'nullable|string|max:20', // 🟢 NOVO
+            'telefone' => 'nullable|string|max:20', 
             'password' => 'required|string|min:6',
-            'tipo_usuario' => 'required|in:dono,caixa,garcom',
+            'tipo_usuario' => 'required|in:dono,gerente,caixa,garcom', // 🟢 Adicionado gerente
             'tipo_contrato' => 'required|in:fixo,temporario'
         ];
 
@@ -52,7 +52,7 @@ class FuncionarioController extends Controller
         $funcionario = User::create([
             'name' => $dados['name'],
             'email' => $dados['email'],
-            'telefone' => $dados['telefone'] ?? null, // 🟢 NOVO
+            'telefone' => $dados['telefone'] ?? null, 
             'password' => Hash::make($dados['password']),
             'tipo_usuario' => $dados['tipo_usuario'],
             'status_conta' => 'ativo',
@@ -70,18 +70,23 @@ class FuncionarioController extends Controller
 
         $regras = [
             'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email,' . $id, // Ignora o próprio ID na checagem
+            'email' => 'required|email|unique:users,email,' . $id,
             'telefone' => 'nullable|string|max:20',
-            'tipo_usuario' => 'required|in:dono,caixa,garcom',
+            'tipo_usuario' => 'required|in:dono,gerente,caixa,garcom', // 🟢 Adicionado gerente
             'tipo_contrato' => 'required|in:fixo,temporario'
         ];
 
-        // Só exige senha se o dono preencheu alguma coisa (se quiser mudar)
         if ($requisicao->filled('password')) {
             $regras['password'] = 'string|min:6';
         }
 
         $dados = $requisicao->validate($regras, ['email.unique' => 'Este e-mail já está em uso por outro funcionário.']);
+
+        // 🟢 TRAVA DE SEGURANÇA: O Dono nunca pode deixar de ser Dono, nem ser temporário!
+        if ($funcionario->tipo_usuario === 'dono') {
+            $dados['tipo_usuario'] = 'dono';
+            $dados['tipo_contrato'] = 'fixo';
+        }
 
         $funcionario->name = $dados['name'];
         $funcionario->email = $dados['email'];
@@ -93,7 +98,7 @@ class FuncionarioController extends Controller
             $funcionario->password = Hash::make($dados['password']);
         }
 
-        // Se mudou para temporário ou renovou o timer
+        // Se mudou para temporário ou renovou o timer (ignorando o dono, que já foi barrado)
         if ($dados['tipo_contrato'] === 'temporario' && $requisicao->filled('horas_validade')) {
             $funcionario->expiracao_acesso = Carbon::now()->addHours($requisicao->horas_validade);
         } elseif ($dados['tipo_contrato'] === 'fixo') {
