@@ -5,7 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\DB;
 use App\Models\Comanda;
 use App\Models\Produto;
-use Carbon\Carbon;
+use Carbon\Carbon; 
 
 class DashboardService
 {
@@ -16,13 +16,20 @@ class DashboardService
 
         $qtd_comandas = $comandas_fechadas->count();
         $faturamento_bruto = $comandas_fechadas->sum('valor_total');
+        $total_descontos = $comandas_fechadas->sum('desconto');
         $ticket_medio = $qtd_comandas > 0 ? ($faturamento_bruto / $qtd_comandas) : 0;
         
         $tempo_medio_minutos = $comandas_fechadas->whereNotNull('data_hora_abertura')
             ->selectRaw('AVG(TIMESTAMPDIFF(MINUTE, data_hora_abertura, data_hora_fechamento)) as media')
             ->value('media') ?? 0;
 
-        // 🟢 ATUALIZADO: Buscar Status e Contrato dos Funcionários
+        // 🟢 NOVO: Faturamento Avulso (Balcão) vs Mesas
+        $faturamento_balcao = Comanda::where('status_comanda', 'fechada')
+            ->whereNull('mesa_id') // Comandas sem mesa vinculada são avulsas
+            ->whereBetween('data_hora_fechamento', [$data_inicio, $data_fim])
+            ->sum('valor_total');
+
+        // 🟢 ATUALIZADO: Equipa Base agora soma também os descontos dados por cada um!
         $equipe_base = DB::table('comandas')
             ->join('users', 'comandas.usuario_id', '=', 'users.id')
             ->where('comandas.status_comanda', 'fechada')
@@ -31,6 +38,7 @@ class DashboardService
                 'users.id as usuario_id', 'users.name', 'users.status_conta', 'users.tipo_contrato',
                 DB::raw('count(comandas.id) as total_mesas'),
                 DB::raw('sum(comandas.valor_total) as total_vendas'),
+                DB::raw('sum(comandas.desconto) as descontos_concedidos'), // 🟢 Adicionado
                 DB::raw('AVG(TIMESTAMPDIFF(MINUTE, comandas.data_hora_abertura, comandas.data_hora_fechamento)) as tempo_medio_minutos')
             )
             ->groupBy('users.id', 'users.name', 'users.status_conta', 'users.tipo_contrato')
@@ -61,11 +69,11 @@ class DashboardService
 
             return [
                 'name' => $base->name,
-                // 🟢 ATUALIZADO: Dados injetados na resposta
                 'status_conta' => $base->status_conta ?? 'ativo',
                 'tipo_contrato' => $base->tipo_contrato ?? 'fixo',
                 'total_mesas' => $base->total_mesas,
                 'total_vendas' => $base->total_vendas,
+                'descontos_concedidos' => $base->descontos_concedidos ?? 0, // 🟢 Adicionado
                 'tempo_medio_minutos' => $base->tempo_medio_minutos ? round($base->tempo_medio_minutos) : 0,
                 'itens_servidos' => $itens ? $itens->itens_servidos : 0,
                 'lucro_gerado' => $itens ? round($itens->lucro_gerado, 2) : 0,
@@ -140,9 +148,20 @@ class DashboardService
             ->orderBy('data_venda')
             ->get();
 
+        $descontos_cronologicos = DB::table('comandas')
+            ->where('status_comanda', 'fechada')
+            ->where('desconto', '>', 0)
+            ->whereBetween('data_hora_fechamento', [$data_inicio, $data_fim])
+            ->select(DB::raw('DATE(data_hora_fechamento) as data_venda'), DB::raw('SUM(desconto) as total_desconto'))
+            ->groupBy('data_venda')
+            ->orderBy('data_venda')
+            ->get();
+
         return [
             'indicadores' => [
                 'faturamento_bruto' => round($faturamento_bruto, 2),
+                'faturamento_balcao' => round($faturamento_balcao, 2), // 🟢 NOVO DADO!
+                'total_descontos' => round($total_descontos, 2),
                 'ticket_medio' => round($ticket_medio, 2),
                 'total_pedidos' => $qtd_comandas,
                 'tempo_permanencia' => round($tempo_medio_minutos) . " min"
@@ -155,7 +174,8 @@ class DashboardService
             'ranking_mesas' => $ranking_mesas,       
             'vendas_por_dia' => $vendas_por_dia,
             'vendas_por_categoria' => $vendas_por_categoria, 
-            'vendas_cronologicas' => $vendas_cronologicas    
+            'vendas_cronologicas' => $vendas_cronologicas,
+            'descontos_cronologicos' => $descontos_cronologicos 
         ];
     }
 
@@ -206,6 +226,8 @@ class DashboardService
                 
                 if ($comanda->listar_itens->count() > 3) $itens_str .= ' e mais...';
 
+                $aviso_desconto = $comanda->desconto > 0 ? " | 🎁 Desconto: R$ " . number_format($comanda->desconto, 2, ',', '.') : "";
+
                 $mesa_nome = $comanda->buscar_mesa ? $comanda->buscar_mesa->nome_mesa : 'Balcão/Avulsa';
 
                 return [
@@ -216,7 +238,7 @@ class DashboardService
                     'titulo' => "Venda Concluída: Comanda #{$comanda->id} ({$mesa_nome})",
                     'descricao' => "Faturou R$ {$comanda->valor_total}.",
                     'usuario' => $comanda->buscar_usuario->name ?? 'Sistema',
-                    'detalhes_extras' => "Itens: " . $itens_str,
+                    'detalhes_extras' => "Itens: " . $itens_str . $aviso_desconto, 
                     'cliente' => $comanda->buscar_cliente->nome_cliente ?? ($comanda->nome_cliente ?? null),
                     'comanda_raw' => $comanda 
                 ];

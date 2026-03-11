@@ -10,6 +10,7 @@ use App\Http\Controllers\ProdutoController;
 use App\Http\Controllers\ComandaController;
 use App\Http\Controllers\AnalisesController;
 use App\Http\Controllers\FuncionarioController;
+use App\Http\Middleware\IdempotenciaMiddleware; // 🟢 IMPORTAÇÃO DO MIDDLEWARE
 use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
 use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
 
@@ -37,22 +38,25 @@ Route::middleware([
         Route::post('/cadastrar-produto', [ProdutoController::class, 'cadastrar_produto']);
         Route::post('/produtos/editar/{id}', [ProdutoController::class, 'atualizar_produto']);
 
-        // Gestão de Comandas
-        Route::post('/abrir-comanda', [ComandaController::class, 'abrir_comanda_mesa']);
-        Route::post('/fechar-comanda/{id}', [ComandaController::class, 'fechar_comanda']);
+        // 🟢 GESTÃO DE COMANDAS (Protegidas por Idempotência Contra Duplicação)
         Route::get('/buscar-comanda/{id}', [ComandaController::class, 'buscar_comanda']); 
         Route::get('/listar-comandas', [ComandaController::class, 'listar_todas_comandas']);
-        Route::post('/adicionar-itens-comanda/{id}', [ComandaController::class, 'adicionar_itens_comanda']);
-        Route::post('/venda-balcao', [ComandaController::class, 'venda_balcao']);
-        Route::post('/fechar-comanda/cancelar/{id}', [ComandaController::class, 'cancelar_comanda']);
-                Route::post('/alterar-quantidade-item/{id_item}', [ComandaController::class, 'alterar_quantidade']);
-        Route::delete('/remover-item-comanda/{id_item}', [ComandaController::class, 'remover_item']);
-        Route::post('/reabrir-comanda/{id}', [ComandaController::class, 'reabrir_comanda']);
+        
+        Route::middleware([IdempotenciaMiddleware::class])->group(function () {
+            Route::post('/abrir-comanda', [ComandaController::class, 'abrir_comanda_mesa']);
+            Route::post('/fechar-comanda/{id}', [ComandaController::class, 'fechar_comanda']);
+            Route::post('/adicionar-itens-comanda/{id}', [ComandaController::class, 'adicionar_itens_comanda']);
+            Route::post('/alterar-quantidade-item/{id}', [ComandaController::class, 'alterar_quantidade']);
+            Route::delete('/remover-item-comanda/{id}', [ComandaController::class, 'remover_item']);
+            Route::post('/venda-balcao', [ComandaController::class, 'venda_balcao']);
+            Route::post('/fechar-comanda/cancelar/{id}', [ComandaController::class, 'cancelar_comanda']);
+            Route::post('/reabrir-comanda/{id}', [ComandaController::class, 'reabrir_comanda']);
+        });
 
         // Inteligência de Negócios (BI)
         Route::get('/analises/dashboard', [AnalisesController::class, 'obter_resumo_dashboard']);
 
-        // Gestão de Equipa (Funcionários e Temporários)
+        // Gestão de Equipa
         Route::get('/equipe/listar', [FuncionarioController::class, 'listar_funcionarios']);
         Route::post('/equipe/cadastrar', [FuncionarioController::class, 'cadastrar_funcionario']);
         Route::post('/equipe/alternar-status/{id}', [FuncionarioController::class, 'alternar_status']);
