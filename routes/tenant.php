@@ -10,7 +10,7 @@ use App\Http\Controllers\ProdutoController;
 use App\Http\Controllers\ComandaController;
 use App\Http\Controllers\AnalisesController;
 use App\Http\Controllers\FuncionarioController;
-use App\Http\Middleware\IdempotenciaMiddleware; // 🟢 IMPORTAÇÃO DO MIDDLEWARE
+use App\Http\Middleware\IdempotenciaMiddleware;
 use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
 use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
 
@@ -19,6 +19,12 @@ Route::middleware([
     InitializeTenancyByDomain::class,
     PreventAccessFromCentralDomains::class,
 ])->prefix('api')->group(function () { 
+
+    // 🟢 Rota pública de ping — usada pelo app para detectar se a VPS está online
+    // Não requer autenticação. Retorna 200 sempre que o servidor estiver de pé.
+    Route::get('/ping', function () {
+        return response()->json(['ok' => true, 'servidor' => 'vps']);
+    });
 
     Route::post('/realizar-login', [AutenticacaoController::class, 'login']);
 
