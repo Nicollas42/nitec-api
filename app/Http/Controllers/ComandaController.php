@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str; // 🟢 Essencial para ler o 'off_'
 use App\Services\ComandaService; 
 
 class ComandaController extends Controller
@@ -34,6 +35,13 @@ class ComandaController extends Controller
 
     public function adicionar_itens_comanda(Request $requisicao, $id_comanda)
     {
+        // 🟢 TRADUTOR OFFLINE: Converte a comanda fantasma ('off_5') no ID real da mesa
+        if (Str::startsWith($id_comanda, 'off_')) {
+            $comanda_ativa = \App\Models\Comanda::where('mesa_id', str_replace('off_', '', $id_comanda))->where('status_comanda', 'aberta')->first();
+            if ($comanda_ativa) $id_comanda = $comanda_ativa->id;
+            else return response()->json(['status' => false, 'mensagem' => 'Nenhuma conta aberta nesta mesa.'], 404);
+        }
+
         $dados = $requisicao->validate(['itens' => 'required|array', 'itens.*.produto_id' => 'required', 'itens.*.quantidade' => 'required|integer', 'itens.*.preco_unitario' => 'required|numeric']);
         DB::beginTransaction();
         try {
@@ -56,6 +64,13 @@ class ComandaController extends Controller
 
     public function fechar_comanda(Request $requisicao, $id)
     {
+        // 🟢 TRADUTOR OFFLINE
+        if (Str::startsWith($id, 'off_')) {
+            $comanda_ativa = \App\Models\Comanda::where('mesa_id', str_replace('off_', '', $id))->where('status_comanda', 'aberta')->first();
+            if ($comanda_ativa) $id = $comanda_ativa->id;
+            else return response()->json(['sucesso' => false, 'mensagem' => 'Nenhuma conta aberta para fechar.'], 404);
+        }
+
         $dados = $requisicao->validate(['data_hora_fechamento' => 'required|date', 'desconto' => 'nullable|numeric']);
         DB::beginTransaction();
         try {
@@ -73,6 +88,13 @@ class ComandaController extends Controller
 
     public function cancelar_comanda(Request $requisicao, $id)
     {
+        // 🟢 TRADUTOR OFFLINE
+        if (Str::startsWith($id, 'off_')) {
+            $comanda_ativa = \App\Models\Comanda::where('mesa_id', str_replace('off_', '', $id))->where('status_comanda', 'aberta')->first();
+            if ($comanda_ativa) $id = $comanda_ativa->id;
+            else return response()->json(['sucesso' => false, 'mensagem' => 'Nenhuma conta aberta para cancelar.'], 404);
+        }
+
         $dados = $requisicao->validate(['motivo_cancelamento' => 'required|string', 'retornar_ao_estoque' => 'required|boolean']);
         DB::beginTransaction();
         try {
@@ -95,7 +117,15 @@ class ComandaController extends Controller
         } catch (\Exception $e) { DB::rollBack(); return response()->json(['sucesso' => false], 500); }
     }
 
-    public function buscar_comanda($id) { return response()->json(['sucesso' => true, 'dados' => \App\Models\Comanda::with('listar_itens.buscar_produto')->findOrFail($id)]); }
+    public function buscar_comanda($id) { 
+        // 🟢 TRADUTOR OFFLINE (Caso a internet volte exatamente quando ele clica na conta fantasma)
+        if (Str::startsWith($id, 'off_')) {
+            $comanda_ativa = \App\Models\Comanda::with('listar_itens.buscar_produto')->where('mesa_id', str_replace('off_', '', $id))->where('status_comanda', 'aberta')->first();
+            if ($comanda_ativa) return response()->json(['sucesso' => true, 'dados' => $comanda_ativa]);
+            return response()->json(['sucesso' => false, 'mensagem' => 'Comanda não encontrada'], 404);
+        }
+        return response()->json(['sucesso' => true, 'dados' => \App\Models\Comanda::with('listar_itens.buscar_produto')->findOrFail($id)]); 
+    }
 
     public function alterar_quantidade(Request $requisicao, $id_item) 
     {
