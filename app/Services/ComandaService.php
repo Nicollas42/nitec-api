@@ -13,11 +13,13 @@ use Carbon\Carbon;
 
 class ComandaService
 {
-    // 🟢 FOCO OPERACIONAL: Carrega apenas Hoje e as Abertas (Fim do engasgo!)
+    // 🟢 FOCO OPERACIONAL: Carrega apenas Hoje e as Abertas
+    // Inclui listar_itens e buscar_produto — essencial para o modo offline
+    // O app persiste essa resposta no comandas_store e usa offline
     public function obter_comandas_do_dia()
     {
         $hoje = Carbon::today();
-        return Comanda::with(['buscar_mesa', 'buscar_cliente'])
+        return Comanda::with(['buscar_mesa', 'buscar_cliente', 'listar_itens.buscar_produto'])
             ->where('status_comanda', 'aberta')
             ->orWhere(function($query) use ($hoje) {
                 $query->whereIn('status_comanda', ['fechada', 'cancelada'])

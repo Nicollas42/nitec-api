@@ -10,6 +10,7 @@ use App\Http\Controllers\ProdutoController;
 use App\Http\Controllers\ComandaController;
 use App\Http\Controllers\AnalisesController;
 use App\Http\Controllers\FuncionarioController;
+use App\Http\Controllers\PermissaoController; // 🟢 NOVO CONTEUDO
 use App\Http\Middleware\IdempotenciaMiddleware;
 use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
 use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
@@ -73,5 +74,9 @@ Route::middleware([
         // Gestão de Estoque
         Route::post('/estoque/registrar-perda', [\App\Http\Controllers\EstoqueController::class, 'registrar_perda']);
         Route::post('/estoque/registrar-entrada', [\App\Http\Controllers\EstoqueController::class, 'registrar_entrada']);
+
+        // Gestão de Permissões
+        Route::get('/permissoes', [PermissaoController::class, 'index']);
+        Route::post('/permissoes', [PermissaoController::class, 'store']);
     });
 });

@@ -118,7 +118,12 @@ class DashboardService
             ->all();
         
         $ranking_produtos = DB::table('comanda_itens')->join('comandas', 'comanda_itens.comanda_id', '=', 'comandas.id')->join('produtos', 'comanda_itens.produto_id', '=', 'produtos.id')->where('comandas.status_comanda', 'fechada')->whereBetween('comandas.data_hora_fechamento', [$data_inicio, $data_fim])->select('produtos.id as produto_id', 'produtos.nome_produto', DB::raw('SUM(comanda_itens.quantidade) as quantidade_total'), DB::raw('SUM(comanda_itens.quantidade * comanda_itens.preco_unitario) as receita_total'), DB::raw('SUM(comanda_itens.quantidade * (comanda_itens.preco_unitario - COALESCE(produtos.preco_custo, 0))) as lucro_total'))->groupBy('produtos.id', 'produtos.nome_produto')->orderByDesc('receita_total')->get();
-        $ranking_mesas = DB::table('comandas')->join('mesas', 'comandas.mesa_id', '=', 'mesas.id')->where('comandas.status_comanda', 'fechada')->whereBetween('comandas.data_hora_fechamento', [$data_inicio, $data_fim])->select('mesas.nome_mesa', DB::raw('count(comandas.id) as total_atendimentos'), DB::raw('sum(comandas.valor_total) as receita_gerada'))->groupBy('mesas.id', 'mesas.nome_mesa')->orderByDesc('receita_gerada')->get();
+        $ranking_mesas = DB::table('comandas')->join('mesas', 'comandas.mesa_id', '=', 'mesas.id')->where('comandas.status_comanda', 'fechada')->whereBetween('comandas.data_hora_fechamento', [$data_inicio, $data_fim])->select('mesas.nome_mesa', DB::raw('count(comandas.id) as total_atendimentos'), DB::raw('sum(comandas.valor_total) as receita_gerada'), DB::raw('AVG(TIMESTAMPDIFF(MINUTE, comandas.data_hora_abertura, comandas.data_hora_fechamento)) as tempo_medio_minutos'))->groupBy('mesas.id', 'mesas.nome_mesa')->orderByDesc('receita_gerada')->get();
+        // Arredondar tempo_medio_minutos do ranking_mesas e certificar que não é nulo
+        $ranking_mesas = $ranking_mesas->map(function ($mesa) {
+            $mesa->tempo_medio_minutos = $mesa->tempo_medio_minutos ? round($mesa->tempo_medio_minutos) : 0;
+            return $mesa;
+        });
         $vendas_por_dia = DB::table('comandas')->where('status_comanda', 'fechada')->whereBetween('data_hora_fechamento', [$data_inicio, $data_fim])->select(DB::raw('DAYOFWEEK(data_hora_fechamento) as dia_semana'), DB::raw('sum(valor_total) as faturamento_total'), DB::raw('count(id) as total_comandas'))->groupBy('dia_semana')->orderBy('dia_semana')->get();
 
         $itens_categoria = DB::table('comanda_itens')
