@@ -25,6 +25,20 @@ python -m venv .venv
 .\.venv\Scripts\python.exe main.py
 ```
 
+## Como usar o banco da VPS
+
+1. Copie `.env.example` para `.env`.
+2. Preencha `AGENTE_DB_DATABASE`, `AGENTE_DB_USERNAME` e `AGENTE_DB_PASSWORD` com um usuario valido do MySQL da VPS.
+3. Preferencialmente, configure `AGENTE_DB_READONLY_USERNAME` e `AGENTE_DB_READONLY_PASSWORD` para um usuario somente leitura.
+4. Mantenha `AGENTE_SSH_TUNNEL_ENABLED=true` para que o script abra um tunnel local em `127.0.0.1:3307`.
+5. Inicie o agente com `controlar_agente_ia_local.bat start`.
+
+Com isso, o fluxo fica:
+
+- sua API local conecta em `127.0.0.1:3307`
+- o tunnel SSH encaminha para `127.0.0.1:3306` da VPS
+- o MySQL da VPS continua fechado para a internet publica
+
 ## Como testar
 
 ```powershell
@@ -54,3 +68,5 @@ Invoke-RestMethod `
 - O ideal de producao e usar um usuario MySQL somente leitura.
 - Se `AGENTE_DB_READONLY_USERNAME` nao estiver configurado, o agente usa as credenciais da aplicacao como fallback.
 - Mesmo no fallback, o SQL passa por validacao e a sessao e forzada para leitura.
+- O script `controlar_agente_ia_local.bat` agora pode subir tambem o tunnel SSH do banco quando `AGENTE_SSH_TUNNEL_ENABLED=true`.
+- O script `testar_conexao_banco.py` ajuda a confirmar se as credenciais atuais conseguem abrir a base central antes de testar pelo site.

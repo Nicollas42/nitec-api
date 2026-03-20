@@ -4,14 +4,19 @@ setlocal enableextensions
 set "script_dir=%~dp0"
 if "%script_dir:~-1%"=="\" set "script_dir=%script_dir:~0,-1%"
 
+set "env_local_path=%script_dir%\.env"
 set "python_path=%script_dir%\.venv\Scripts\python.exe"
 set "api_main_path=%script_dir%\main.py"
+set "db_status_script=%script_dir%\testar_conexao_banco.py"
 set "ollama_path=%LocalAppData%\Programs\Ollama\ollama.exe"
 set "ollama_window_title=agente_ia_ollama"
 set "api_window_title=agente_ia_api_local"
+set "ssh_window_title=agente_ia_db_tunnel"
 set "ollama_port=11434"
 set "api_port=8001"
 set "api_health_url=http://127.0.0.1:%api_port%/api/v1/health"
+
+call :carregar_configuracoes_locais
 
 if "%~1"=="" set "modo_interativo=1"
 
@@ -40,8 +45,36 @@ if errorlevel 2 goto :parar_agente
 if errorlevel 1 goto :iniciar_agente
 goto :menu_principal
 
+rem Descricao: carrega a configuracao local do agente e aplica padroes seguros.
+:carregar_configuracoes_locais
+if exist "%env_local_path%" (
+    for /f "usebackq eol=# tokens=1,* delims==" %%a in ("%env_local_path%") do (
+        if not "%%a"=="" set "%%a=%%b"
+    )
+)
+
+if not defined AGENTE_SSH_TUNNEL_ENABLED set "AGENTE_SSH_TUNNEL_ENABLED=false"
+if not defined AGENTE_SSH_HOST set "AGENTE_SSH_HOST=187.77.63.216"
+if not defined AGENTE_SSH_PORT set "AGENTE_SSH_PORT=22"
+if not defined AGENTE_SSH_USER set "AGENTE_SSH_USER=root"
+if not defined AGENTE_SSH_LOCAL_BIND_HOST set "AGENTE_SSH_LOCAL_BIND_HOST=127.0.0.1"
+if not defined AGENTE_SSH_LOCAL_DB_PORT set "AGENTE_SSH_LOCAL_DB_PORT=3307"
+if not defined AGENTE_SSH_REMOTE_DB_HOST set "AGENTE_SSH_REMOTE_DB_HOST=127.0.0.1"
+if not defined AGENTE_SSH_REMOTE_DB_PORT set "AGENTE_SSH_REMOTE_DB_PORT=3306"
+
+if /i "%AGENTE_SSH_TUNNEL_ENABLED%"=="true" (
+    if not defined AGENTE_DB_HOST set "AGENTE_DB_HOST=%AGENTE_SSH_LOCAL_BIND_HOST%"
+    if not defined AGENTE_DB_PORT set "AGENTE_DB_PORT=%AGENTE_SSH_LOCAL_DB_PORT%"
+)
+
+if not defined AGENTE_DB_HOST set "AGENTE_DB_HOST=127.0.0.1"
+if not defined AGENTE_DB_PORT set "AGENTE_DB_PORT=3306"
+exit /b 0
+
 rem Descricao: valida se os arquivos locais necessarios existem.
 :validar_dependencias
+call :carregar_configuracoes_locais
+
 if not exist "%ollama_path%" (
     echo [ERRO] Ollama nao encontrado em:
     echo %ollama_path%
@@ -58,6 +91,20 @@ if not exist "%api_main_path%" (
     echo [ERRO] Arquivo main.py nao encontrado em:
     echo %api_main_path%
     exit /b 1
+)
+
+if not exist "%db_status_script%" (
+    echo [ERRO] Script de teste do banco nao encontrado em:
+    echo %db_status_script%
+    exit /b 1
+)
+
+if /i "%AGENTE_SSH_TUNNEL_ENABLED%"=="true" (
+    where ssh >nul 2>&1
+    if errorlevel 1 (
+        echo [ERRO] Cliente SSH nao encontrado no PATH do Windows.
+        exit /b 1
+    )
 )
 
 exit /b 0
@@ -107,10 +154,40 @@ if errorlevel 1 (
 echo [OK] Processo da porta %~1 encerrado.
 exit /b 0
 
+rem Descricao: mostra avisos importantes sobre a configuracao atual do banco.
+:mostrar_avisos_configuracao
+if /i "%AGENTE_SSH_TUNNEL_ENABLED%"=="true" (
+    if not exist "%env_local_path%" (
+        echo [AVISO] O arquivo .env local do agente ainda nao existe.
+        echo [AVISO] Para usar o banco da VPS, copie .env.example para .env e preencha as credenciais do MySQL remoto.
+    )
+)
+exit /b 0
+
 rem Descricao: inicia o Ollama e a API local do agente.
 :iniciar_agente
 call :validar_dependencias
 if errorlevel 1 goto :voltar_ou_sair
+
+call :mostrar_avisos_configuracao
+if /i "%AGENTE_SSH_TUNNEL_ENABLED%"=="true" (
+    call :porta_ativa %AGENTE_SSH_LOCAL_DB_PORT%
+    if errorlevel 1 (
+        if "%AGENTE_SSH_HOST%"=="" (
+            echo [ERRO] AGENTE_SSH_HOST nao configurado.
+            goto :voltar_ou_sair
+        )
+
+        set "ssh_destino=%AGENTE_SSH_HOST%"
+        if not "%AGENTE_SSH_USER%"=="" set "ssh_destino=%AGENTE_SSH_USER%@%AGENTE_SSH_HOST%"
+
+        echo [INFO] Iniciando tunnel SSH do banco em %AGENTE_SSH_LOCAL_BIND_HOST%:%AGENTE_SSH_LOCAL_DB_PORT%...
+        start "%ssh_window_title%" cmd /k "title %ssh_window_title% && ssh -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes -N -L %AGENTE_SSH_LOCAL_BIND_HOST%:%AGENTE_SSH_LOCAL_DB_PORT%:%AGENTE_SSH_REMOTE_DB_HOST%:%AGENTE_SSH_REMOTE_DB_PORT% -p %AGENTE_SSH_PORT% %ssh_destino%"
+        timeout /t 4 /nobreak >nul
+    ) else (
+        echo [OK] Tunnel SSH do banco ja esta ativo em %AGENTE_SSH_LOCAL_BIND_HOST%:%AGENTE_SSH_LOCAL_DB_PORT%.
+    )
+)
 
 call :porta_ativa %ollama_port%
 if errorlevel 1 (
@@ -124,7 +201,7 @@ if errorlevel 1 (
 call :porta_ativa %api_port%
 if errorlevel 1 (
     echo [INFO] Iniciando API local do agente em 127.0.0.1:%api_port%...
-    start "%api_window_title%" cmd /k "title %api_window_title% && cd /d ""%script_dir%"" && ""%python_path%"" ""%api_main_path%"""
+    start "%api_window_title%" cmd /k "title %api_window_title% && cd /d ""%script_dir%"" && set AGENTE_DB_HOST=%AGENTE_DB_HOST% && set AGENTE_DB_PORT=%AGENTE_DB_PORT% && ""%python_path%"" ""%api_main_path%"""
     timeout /t 4 /nobreak >nul
 ) else (
     echo [OK] API local ja esta ativa em 127.0.0.1:%api_port%.
@@ -139,8 +216,10 @@ rem Descricao: para o Ollama e a API local abertos por este script.
 echo [INFO] Encerrando componentes locais do agente...
 call :encerrar_janela_cmd "%api_window_title%"
 call :encerrar_janela_cmd "%ollama_window_title%"
+call :encerrar_janela_cmd "%ssh_window_title%"
 call :encerrar_processo_por_porta %api_port%
 call :encerrar_processo_por_porta %ollama_port%
+if /i "%AGENTE_SSH_TUNNEL_ENABLED%"=="true" call :encerrar_processo_por_porta %AGENTE_SSH_LOCAL_DB_PORT%
 
 echo.
 call :mostrar_status_sem_menu
@@ -164,6 +243,26 @@ rem Descricao: implementa a parte de inicio sem retorno ao menu.
 call :validar_dependencias
 if errorlevel 1 exit /b 1
 
+call :mostrar_avisos_configuracao
+if /i "%AGENTE_SSH_TUNNEL_ENABLED%"=="true" (
+    call :porta_ativa %AGENTE_SSH_LOCAL_DB_PORT%
+    if errorlevel 1 (
+        if "%AGENTE_SSH_HOST%"=="" (
+            echo [ERRO] AGENTE_SSH_HOST nao configurado.
+            exit /b 1
+        )
+
+        set "ssh_destino=%AGENTE_SSH_HOST%"
+        if not "%AGENTE_SSH_USER%"=="" set "ssh_destino=%AGENTE_SSH_USER%@%AGENTE_SSH_HOST%"
+
+        echo [INFO] Iniciando tunnel SSH do banco em %AGENTE_SSH_LOCAL_BIND_HOST%:%AGENTE_SSH_LOCAL_DB_PORT%...
+        start "%ssh_window_title%" cmd /k "title %ssh_window_title% && ssh -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes -N -L %AGENTE_SSH_LOCAL_BIND_HOST%:%AGENTE_SSH_LOCAL_DB_PORT%:%AGENTE_SSH_REMOTE_DB_HOST%:%AGENTE_SSH_REMOTE_DB_PORT% -p %AGENTE_SSH_PORT% %ssh_destino%"
+        timeout /t 4 /nobreak >nul
+    ) else (
+        echo [OK] Tunnel SSH do banco ja esta ativo em %AGENTE_SSH_LOCAL_BIND_HOST%:%AGENTE_SSH_LOCAL_DB_PORT%.
+    )
+)
+
 call :porta_ativa %ollama_port%
 if errorlevel 1 (
     echo [INFO] Iniciando Ollama em 127.0.0.1:%ollama_port%...
@@ -176,7 +275,7 @@ if errorlevel 1 (
 call :porta_ativa %api_port%
 if errorlevel 1 (
     echo [INFO] Iniciando API local do agente em 127.0.0.1:%api_port%...
-    start "%api_window_title%" cmd /k "title %api_window_title% && cd /d ""%script_dir%"" && ""%python_path%"" ""%api_main_path%"""
+    start "%api_window_title%" cmd /k "title %api_window_title% && cd /d ""%script_dir%"" && set AGENTE_DB_HOST=%AGENTE_DB_HOST% && set AGENTE_DB_PORT=%AGENTE_DB_PORT% && ""%python_path%"" ""%api_main_path%"""
     timeout /t 4 /nobreak >nul
 ) else (
     echo [OK] API local ja esta ativa em 127.0.0.1:%api_port%.
@@ -189,12 +288,16 @@ rem Descricao: implementa a parte de parada sem retorno ao menu.
 echo [INFO] Encerrando componentes locais do agente...
 call :encerrar_janela_cmd "%api_window_title%"
 call :encerrar_janela_cmd "%ollama_window_title%"
+call :encerrar_janela_cmd "%ssh_window_title%"
 call :encerrar_processo_por_porta %api_port%
 call :encerrar_processo_por_porta %ollama_port%
+if /i "%AGENTE_SSH_TUNNEL_ENABLED%"=="true" call :encerrar_processo_por_porta %AGENTE_SSH_LOCAL_DB_PORT%
 exit /b 0
 
 rem Descricao: imprime o status dos componentes e do tunnel.
 :mostrar_status_sem_menu
+call :carregar_configuracoes_locais
+
 echo ============================================
 echo Status do Agente IA Local
 echo ============================================
@@ -213,6 +316,19 @@ if errorlevel 1 (
     echo API local: ativa em 127.0.0.1:%api_port%
 )
 
+if /i "%AGENTE_SSH_TUNNEL_ENABLED%"=="true" (
+    call :porta_ativa %AGENTE_SSH_LOCAL_DB_PORT%
+    if errorlevel 1 (
+        echo Tunnel banco VPS: parado
+    ) else (
+        echo Tunnel banco VPS: ativo em %AGENTE_SSH_LOCAL_BIND_HOST%:%AGENTE_SSH_LOCAL_DB_PORT%
+    )
+    echo Banco configurado: %AGENTE_DB_HOST%:%AGENTE_DB_PORT%
+) else (
+    echo Tunnel banco VPS: desabilitado
+    echo Banco configurado: %AGENTE_DB_HOST%:%AGENTE_DB_PORT%
+)
+
 sc query Cloudflared | findstr /c:"RUNNING" >nul 2>&1
 if errorlevel 1 (
     echo Cloudflared: nao esta em execucao
@@ -224,6 +340,10 @@ if errorlevel 1 (
 echo.
 echo Health da API local:
 powershell -NoProfile -Command "try { (Invoke-WebRequest -UseBasicParsing '%api_health_url%').Content } catch { 'indisponivel' }"
+
+echo.
+echo Conectividade do banco:
+"%python_path%" "%db_status_script%"
 exit /b 0
 
 rem Descricao: controla se volta ao menu ou encerra o script.
