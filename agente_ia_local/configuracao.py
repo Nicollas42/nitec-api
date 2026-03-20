@@ -48,6 +48,18 @@ def ler_string_com_padrao(nome_env: str, padrao: str) -> str:
     return os.getenv(nome_env, padrao).strip()
 
 
+def ler_caminho(base_dir: Path, nome_env: str, padrao_relativo: str) -> Path:
+    """Resolve um caminho absoluto ou relativo a partir do diretorio base informado."""
+
+    valor = os.getenv(nome_env, padrao_relativo).strip() or padrao_relativo
+    caminho = Path(valor)
+
+    if not caminho.is_absolute():
+        caminho = (base_dir / caminho).resolve()
+
+    return caminho
+
+
 def carregar_arquivos_env(base_dir: Path) -> Path:
     """Carrega primeiro o .env do Laravel e depois o .env local do agente."""
 
@@ -88,6 +100,10 @@ class ConfiguracaoAplicacao:
     db_readonly_password: str | None
     db_tenant_prefix: str
     db_tenant_suffix: str
+    dicionario_dados_path: Path
+    conhecimento_max_chars: int
+    max_tabelas_contexto: int
+    usar_llm_resposta_final: bool
     laravel_env_path: Path
 
     @classmethod
@@ -116,5 +132,13 @@ class ConfiguracaoAplicacao:
             db_readonly_password=os.getenv("AGENTE_DB_READONLY_PASSWORD", "").strip() or None,
             db_tenant_prefix=os.getenv("AGENTE_DB_TENANT_PREFIX", "tenant_").strip(),
             db_tenant_suffix=os.getenv("AGENTE_DB_TENANT_SUFFIX", "").strip(),
+            dicionario_dados_path=ler_caminho(
+                base_dir,
+                "AGENTE_DICIONARIO_DADOS_PATH",
+                "../../nitec_app/DICIONARIO_DE_DADOS.md",
+            ),
+            conhecimento_max_chars=ler_inteiro("AGENTE_CONHECIMENTO_MAX_CHARS", 8000),
+            max_tabelas_contexto=ler_inteiro("AGENTE_MAX_TABELAS_CONTEXTO", 6),
+            usar_llm_resposta_final=ler_booleano("AGENTE_USAR_LLM_RESPOSTA_FINAL", False),
             laravel_env_path=laravel_env_path,
         )

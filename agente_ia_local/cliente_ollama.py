@@ -18,28 +18,37 @@ class ClienteOllama:
         self.model = model
         self.timeout_seconds = timeout_seconds
 
-    def gerar_plano_sql(self, pergunta: str, contexto_schema: str) -> dict[str, Any]:
+    def gerar_plano_sql(
+        self,
+        pergunta: str,
+        contexto_schema: str,
+        contexto_conhecimento: str,
+    ) -> dict[str, Any]:
         """Pede ao modelo um JSON contendo o SQL ou um pedido de clarificacao."""
 
         system_prompt = (
             "Voce e um especialista em MySQL para um ERP SaaS multi-tenant. "
             "Responda exclusivamente em JSON valido sem markdown. "
             "Use apenas tabelas e colunas do schema informado. "
-            "Gere somente uma consulta SELECT. "
+            "Use o conhecimento de negocio validado para interpretar a pergunta do usuario. "
+            "Quando houver conflito, use o schema para nomes tecnicos e o conhecimento para semantica de negocio. "
+            "Gere somente uma consulta SELECT unica. "
             "Se a pergunta estiver ambigua, devolva tipo=clarificacao. "
             "Formato obrigatorio: "
             '{"tipo":"sql|clarificacao|recusa","justificativa":"texto","sql":"texto ou vazio"}.'
         )
 
+        conhecimento_prompt = contexto_conhecimento or "Nenhum conhecimento adicional foi carregado."
+
         user_prompt = (
             f"Pergunta do usuario:\n{pergunta}\n\n"
             f"Schema disponivel:\n{contexto_schema}\n\n"
-            "Lembretes:\n"
-            "- Para produto mais vendido, use SUM(comanda_itens.quantidade).\n"
-            "- Para vendas, normalmente filtre comandas.status_comanda = 'fechada'.\n"
+            f"Conhecimento de negocio validado:\n{conhecimento_prompt}\n\n"
+            "Instrucoes finais:\n"
             "- Use aliases simples e legiveis.\n"
             "- Evite SELECT * quando houver alternativa melhor.\n"
             "- Se listar linhas, limite a consulta.\n"
+            "- Nunca use tabelas ou colunas fora do schema informado.\n"
         )
 
         conteudo = self.executar_chat(
