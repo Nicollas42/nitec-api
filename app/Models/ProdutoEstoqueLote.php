@@ -6,14 +6,14 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class EstoqueEntrada extends Model
+class ProdutoEstoqueLote extends Model
 {
     /**
      * Nome explicito da tabela.
      *
      * @var string
      */
-    protected $table = 'estoque_entradas';
+    protected $table = 'produto_estoque_lotes';
 
     /**
      * Atributos liberados para atribuicao em massa.
@@ -23,14 +23,16 @@ class EstoqueEntrada extends Model
     protected $fillable = [
         'produto_id',
         'fornecedor_id',
-        'usuario_id',
-        'quantidade_comprada',
-        'custo_unitario_compra',
-        'custo_total_entrada',
+        'estoque_entrada_id',
+        'modo_origem',
+        'data_validade',
+        'quantidade_inicial',
+        'quantidade_atual',
+        'custo_unitario_medio',
     ];
 
     /**
-     * Retorna o produto associado a entrada de estoque.
+     * Retorna o produto associado ao lote.
      */
     public function produto(): BelongsTo
     {
@@ -38,7 +40,7 @@ class EstoqueEntrada extends Model
     }
 
     /**
-     * Retorna o fornecedor associado a entrada de estoque.
+     * Retorna o fornecedor associado ao lote, quando existir.
      */
     public function fornecedor(): BelongsTo
     {
@@ -46,18 +48,18 @@ class EstoqueEntrada extends Model
     }
 
     /**
-     * Retorna o usuario responsavel pelo lancamento da entrada.
+     * Retorna a entrada que originou o lote, quando existir.
      */
-    public function usuario(): BelongsTo
+    public function estoque_entrada(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(EstoqueEntrada::class);
     }
 
     /**
-     * Retorna os lotes gerados a partir desta entrada.
+     * Retorna os consumos FIFO vinculados a este lote.
      */
-    public function estoque_lotes(): HasMany
+    public function consumos(): HasMany
     {
-        return $this->hasMany(ProdutoEstoqueLote::class)->orderBy('id');
+        return $this->hasMany(ProdutoEstoqueConsumo::class, 'produto_estoque_lote_id')->orderBy('id');
     }
 }

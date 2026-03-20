@@ -9,6 +9,9 @@ use Carbon\Carbon;
 
 class DashboardService
 {
+    /**
+     * Gera o conjunto completo de indicadores e rankings do dashboard.
+     */
     public function gerar_relatorio_completo($data_inicio, $data_fim)
     {
         $comandas_fechadas = Comanda::where('status_comanda', 'fechada')
@@ -49,7 +52,7 @@ class DashboardService
             ->join('produtos', 'comanda_itens.produto_id', '=', 'produtos.id')
             ->where('comandas.status_comanda', 'fechada')
             ->whereBetween('comandas.data_hora_fechamento', [$data_inicio, $data_fim])
-            ->select('comandas.usuario_id', DB::raw('SUM(comanda_itens.quantidade) as itens_servidos'), DB::raw('SUM(comanda_itens.quantidade * (comanda_itens.preco_unitario - COALESCE(produtos.preco_custo, 0))) as lucro_gerado'))
+            ->select('comandas.usuario_id', DB::raw('SUM(comanda_itens.quantidade) as itens_servidos'), DB::raw('SUM(comanda_itens.quantidade * (comanda_itens.preco_unitario - COALESCE(produtos.preco_custo_medio, 0))) as lucro_gerado'))
             ->groupBy('comandas.usuario_id')
             ->get();
 
@@ -88,7 +91,7 @@ class DashboardService
         
         $produtos_encalhados = Produto::whereNotIn('id', $produtos_vendidos_ids)
             ->where('estoque_atual', '>', 0)
-            ->select('id', 'nome_produto', 'estoque_atual', 'preco_venda', 'preco_custo', 'data_validade', 'created_at')
+            ->select('id', 'nome_produto', 'estoque_atual', 'preco_venda', 'preco_custo_medio', 'data_validade', 'created_at')
             ->get()
             ->map(function ($produto) {
                 $ultima_venda = DB::table('comanda_itens')
@@ -100,7 +103,7 @@ class DashboardService
                 $data_ref = $ultima_venda ? Carbon::parse($ultima_venda) : Carbon::parse($produto->created_at);
                 $dias_parado = (int) abs(Carbon::now()->startOfDay()->diffInDays($data_ref->startOfDay()));
 
-                $custo_base = $produto->preco_custo > 0 ? $produto->preco_custo : ($produto->preco_venda * 0.5);
+                $custo_base = $produto->preco_custo_medio > 0 ? $produto->preco_custo_medio : ($produto->preco_venda * 0.5);
                 $prejuizo_potencial = $produto->estoque_atual * $custo_base;
 
                 return [
@@ -117,7 +120,7 @@ class DashboardService
             ->values()
             ->all();
         
-        $ranking_produtos = DB::table('comanda_itens')->join('comandas', 'comanda_itens.comanda_id', '=', 'comandas.id')->join('produtos', 'comanda_itens.produto_id', '=', 'produtos.id')->where('comandas.status_comanda', 'fechada')->whereBetween('comandas.data_hora_fechamento', [$data_inicio, $data_fim])->select('produtos.id as produto_id', 'produtos.nome_produto', DB::raw('SUM(comanda_itens.quantidade) as quantidade_total'), DB::raw('SUM(comanda_itens.quantidade * comanda_itens.preco_unitario) as receita_total'), DB::raw('SUM(comanda_itens.quantidade * (comanda_itens.preco_unitario - COALESCE(produtos.preco_custo, 0))) as lucro_total'))->groupBy('produtos.id', 'produtos.nome_produto')->orderByDesc('receita_total')->get();
+        $ranking_produtos = DB::table('comanda_itens')->join('comandas', 'comanda_itens.comanda_id', '=', 'comandas.id')->join('produtos', 'comanda_itens.produto_id', '=', 'produtos.id')->where('comandas.status_comanda', 'fechada')->whereBetween('comandas.data_hora_fechamento', [$data_inicio, $data_fim])->select('produtos.id as produto_id', 'produtos.nome_produto', DB::raw('SUM(comanda_itens.quantidade) as quantidade_total'), DB::raw('SUM(comanda_itens.quantidade * comanda_itens.preco_unitario) as receita_total'), DB::raw('SUM(comanda_itens.quantidade * (comanda_itens.preco_unitario - COALESCE(produtos.preco_custo_medio, 0))) as lucro_total'))->groupBy('produtos.id', 'produtos.nome_produto')->orderByDesc('receita_total')->get();
         $ranking_mesas = DB::table('comandas')->join('mesas', 'comandas.mesa_id', '=', 'mesas.id')->where('comandas.status_comanda', 'fechada')->whereBetween('comandas.data_hora_fechamento', [$data_inicio, $data_fim])->select('mesas.nome_mesa', DB::raw('count(comandas.id) as total_atendimentos'), DB::raw('sum(comandas.valor_total) as receita_gerada'), DB::raw('AVG(TIMESTAMPDIFF(MINUTE, comandas.data_hora_abertura, comandas.data_hora_fechamento)) as tempo_medio_minutos'))->groupBy('mesas.id', 'mesas.nome_mesa')->orderByDesc('receita_gerada')->get();
         // Arredondar tempo_medio_minutos do ranking_mesas e certificar que não é nulo
         $ranking_mesas = $ranking_mesas->map(function ($mesa) {
@@ -131,7 +134,7 @@ class DashboardService
             ->join('produtos', 'comanda_itens.produto_id', '=', 'produtos.id')
             ->where('comandas.status_comanda', 'fechada')
             ->whereBetween('comandas.data_hora_fechamento', [$data_inicio, $data_fim])
-            ->select('produtos.categoria as nome_categoria', 'produtos.nome_produto', DB::raw('SUM(comanda_itens.quantidade) as quantidade_total'), DB::raw('SUM(comanda_itens.quantidade * comanda_itens.preco_unitario) as receita_total'), DB::raw('SUM(comanda_itens.quantidade * (comanda_itens.preco_unitario - COALESCE(produtos.preco_custo, 0))) as lucro_total'))
+            ->select('produtos.categoria as nome_categoria', 'produtos.nome_produto', DB::raw('SUM(comanda_itens.quantidade) as quantidade_total'), DB::raw('SUM(comanda_itens.quantidade * comanda_itens.preco_unitario) as receita_total'), DB::raw('SUM(comanda_itens.quantidade * (comanda_itens.preco_unitario - COALESCE(produtos.preco_custo_medio, 0))) as lucro_total'))
             ->groupBy('produtos.categoria', 'produtos.nome_produto')
             ->get();
 
@@ -184,9 +187,12 @@ class DashboardService
         ];
     }
 
+    /**
+     * Monta a linha do tempo de auditoria operacional do periodo informado.
+     */
     public function obter_log_auditoria($data_inicio, $data_fim)
     {
-        $entradas = \App\Models\EstoqueEntrada::with(['produto' => function($q) { $q->withTrashed(); }, 'usuario'])
+        $entradas = \App\Models\EstoqueEntrada::with(['produto' => function($q) { $q->withTrashed(); }, 'usuario', 'fornecedor'])
             ->whereBetween('created_at', [$data_inicio, $data_fim])
             ->get()
             ->map(function($item) {
@@ -196,9 +202,9 @@ class DashboardService
                     'icone' => '📦',
                     'cor' => 'blue',
                     'titulo' => "Entrada de Estoque: " . ($item->produto->nome_produto ?? 'Produto Apagado'),
-                    'descricao' => "Adicionadas {$item->quantidade_adicionada} un. compradas a R$ {$item->custo_unitario_compra} cada.",
+                    'descricao' => "Compradas {$item->quantidade_comprada} embalagem(ns) a R$ {$item->custo_unitario_compra} cada.",
                     'usuario' => $item->usuario->name ?? 'Sistema',
-                    'detalhes_extras' => $item->fornecedor ? "Fornecedor: " . $item->fornecedor : '',
+                    'detalhes_extras' => trim(($item->fornecedor?->nome_fantasia ? "Fornecedor: {$item->fornecedor->nome_fantasia} | " : '') . "Total da entrada: R$ {$item->custo_total_entrada}", ' |'),
                     'cliente' => null
                 ];
             });

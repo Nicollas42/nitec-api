@@ -13,6 +13,21 @@ use Carbon\Carbon;
 
 class ComandaService
 {
+    /**
+     * Servico responsavel pela baixa FIFO e restauracao do estoque por referencia.
+     *
+     * @var GestaoEstoqueService
+     */
+    private GestaoEstoqueService $gestaoEstoqueService;
+
+    /**
+     * Injeta o servico especializado de estoque na camada de comandas.
+     */
+    public function __construct(GestaoEstoqueService $gestaoEstoqueService)
+    {
+        $this->gestaoEstoqueService = $gestaoEstoqueService;
+    }
+
     // 🟢 FOCO OPERACIONAL: Carrega apenas Hoje e as Abertas
     // Inclui listar_itens e buscar_produto — essencial para o modo offline
     // O app persiste essa resposta no comandas_store e usa offline
@@ -51,6 +66,9 @@ class ComandaService
         return $comanda;
     }
 
+    /**
+     * Processa uma venda de balcao criando a comanda fechada e baixando estoque em FIFO.
+     */
     public function processar_venda_balcao($itens, $desconto, $usuario_id)
     {
         $agora = Carbon::now();
@@ -65,6 +83,9 @@ class ComandaService
         $comanda->update(['valor_total' => max(0, $subtotal - ($desconto ?? 0))]);
     }
 
+    /**
+     * Adiciona novos itens a uma comanda aberta e baixa o estoque correspondente.
+     */
     public function adicionar_itens($comanda_id, $itens)
     {
         $subtotal = $this->lancar_itens_e_baixar_estoque($comanda_id, $itens, Carbon::now());
@@ -73,17 +94,22 @@ class ComandaService
         return $comanda;
     }
 
+    /**
+     * Lanca os itens da comanda e consome o estoque por ordem de entrada dos lotes.
+     */
     private function lancar_itens_e_baixar_estoque($comanda_id, $itens, $data_hora)
     {
         $subtotal = 0;
         foreach ($itens as $item) {
             $subtotal += ($item['quantidade'] * $item['preco_unitario']);
-            ComandaItem::create([
+            $comanda_item = ComandaItem::create([
                 'comanda_id' => $comanda_id, 'produto_id' => $item['produto_id'],
                 'quantidade' => $item['quantidade'], 'preco_unitario' => $item['preco_unitario'],
                 'data_hora_lancamento' => $data_hora
             ]);
-            Produto::where('id', $item['produto_id'])->decrement('estoque_atual', $item['quantidade']);
+
+            $produto = Produto::query()->lockForUpdate()->findOrFail($item['produto_id']);
+            $this->gestaoEstoqueService->consumir_para_comanda_item($produto, (int) $item['quantidade'], $comanda_item->id);
         }
         return $subtotal;
     }
@@ -119,6 +145,9 @@ class ComandaService
     /**
      * CANCELAR / CALOTE (Com Verificação de Mesa)
      */
+    /**
+     * Cancela ou regista calote, com opcional de restaurar o estoque consumido.
+     */
     public function cancelar_ou_calote($id, $motivo, $retornar_estoque, $usuario_id)
     {
         $comanda = Comanda::with('listar_itens.buscar_produto')->findOrFail($id);
@@ -142,14 +171,20 @@ class ComandaService
 
         foreach ($comanda->listar_itens as $item) {
             if ($retornar_estoque) {
-                Produto::where('id', $item->produto_id)->increment('estoque_atual', $item->quantidade);
+                $this->gestaoEstoqueService->restaurar_por_referencia('comanda_item', $item->id);
             } else {
+                $custo_total_perda = \App\Models\ProdutoEstoqueConsumo::query()
+                    ->where('referencia_tipo', 'comanda_item')
+                    ->where('referencia_id', $item->id)
+                    ->selectRaw('COALESCE(SUM(quantidade * custo_unitario_medio), 0) as custo_total_perda')
+                    ->value('custo_total_perda');
+
                 EstoquePerda::create([
                     'produto_id' => $item->produto_id, 
                     'usuario_id' => $usuario_id,
                     'quantidade' => $item->quantidade, 
                     'motivo' => "Cancelamento/Calote - CMD #{$comanda->id}",
-                    'custo_total_perda' => ($item->buscar_produto->preco_custo ?? 0) * $item->quantidade
+                    'custo_total_perda' => $custo_total_perda ?: (($item->buscar_produto->preco_custo_medio ?? 0) * $item->quantidade)
                 ]);
             }
         }

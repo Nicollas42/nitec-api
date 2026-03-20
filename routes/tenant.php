@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\Auth\AutenticacaoController;
 use App\Http\Controllers\MesaController;
 use App\Http\Controllers\ProdutoController;
+use App\Http\Controllers\FornecedorController;
 use App\Http\Controllers\ComandaController;
 use App\Http\Controllers\AnalisesController;
 use App\Http\Controllers\FuncionarioController;
@@ -42,8 +43,14 @@ Route::middleware([
 
         // Gestão de Produtos
         Route::get('/listar-produtos', [ProdutoController::class, 'listar_produtos']);
+        Route::get('/produtos/detalhes/{id}', [ProdutoController::class, 'detalhes_produto']);
         Route::post('/cadastrar-produto', [ProdutoController::class, 'cadastrar_produto']);
         Route::post('/produtos/editar/{id}', [ProdutoController::class, 'atualizar_produto']);
+        Route::delete('/produtos/excluir/{id}', [ProdutoController::class, 'excluir_produto']);
+        Route::get('/listar-fornecedores', [FornecedorController::class, 'listar_fornecedores']);
+        Route::post('/fornecedores/cadastrar', [FornecedorController::class, 'cadastrar_fornecedor']);
+        Route::post('/fornecedores/editar/{id}', [FornecedorController::class, 'atualizar_fornecedor']);
+        Route::delete('/fornecedores/excluir/{id}', [FornecedorController::class, 'excluir_fornecedor']);
 
         // 🟢 GESTÃO DE COMANDAS (Protegidas por Idempotência Contra Duplicação)
         Route::get('/buscar-comanda/{id}', [ComandaController::class, 'buscar_comanda']); 

@@ -5,15 +5,21 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str; // 🟢 Essencial para ler o 'off_'
-use App\Services\ComandaService; 
+use App\Services\ComandaService;
+use App\Services\GestaoEstoqueService;
 
 class ComandaController extends Controller
 {
     protected $comandaService;
+    protected $gestaoEstoqueService;
 
-    public function __construct(ComandaService $comandaService)
+    /**
+     * Injeta os servicos de comanda e de estoque utilizados pela controller.
+     */
+    public function __construct(ComandaService $comandaService, GestaoEstoqueService $gestaoEstoqueService)
     {
         $this->comandaService = $comandaService;
+        $this->gestaoEstoqueService = $gestaoEstoqueService;
     }
 
     public function listar_todas_comandas()
@@ -127,16 +133,29 @@ class ComandaController extends Controller
         return response()->json(['sucesso' => true, 'dados' => \App\Models\Comanda::with('listar_itens.buscar_produto')->findOrFail($id)]); 
     }
 
+    /**
+     * Altera a quantidade de um item ja lancado, refletindo a baixa ou a devolucao no FIFO.
+     */
     public function alterar_quantidade(Request $requisicao, $id_item) 
     {
         DB::beginTransaction();
         try {
             $item = \App\Models\ComandaItem::findOrFail($id_item);
-            $produto = \App\Models\Produto::findOrFail($item->produto_id);
-            if ($requisicao->acao === 'incrementar') { $item->quantidade += 1; $produto->decrement('estoque_atual', 1); } 
+            $produto = \App\Models\Produto::lockForUpdate()->findOrFail($item->produto_id);
+
+            if ($requisicao->acao === 'incrementar') {
+                $item->quantidade += 1;
+                $this->gestaoEstoqueService->consumir_para_comanda_item($produto, 1, $item->id);
+            } 
             else if ($requisicao->acao === 'decrementar') {
-                if ($item->quantidade <= 1) { $produto->increment('estoque_atual', 1); $item->delete(); } 
-                else { $item->quantidade -= 1; $produto->increment('estoque_atual', 1); }
+                if ($item->quantidade <= 1) {
+                    $this->gestaoEstoqueService->restaurar_por_referencia('comanda_item', $item->id);
+                    $item->delete();
+                } 
+                else {
+                    $item->quantidade -= 1;
+                    $this->gestaoEstoqueService->restaurar_quantidade_por_referencia('comanda_item', $item->id, 1);
+                }
             }
             if ($item->exists) $item->save();
             $comanda = \App\Models\Comanda::findOrFail($item->comanda_id);
@@ -147,12 +166,15 @@ class ComandaController extends Controller
         } catch (\Exception $e) { DB::rollBack(); return response()->json(['sucesso' => false], 500); }
     }
 
+    /**
+     * Remove completamente um item da comanda e devolve o consumo FIFO para o estoque.
+     */
     public function remover_item(Request $requisicao, $id_item) 
     {
         DB::beginTransaction();
         try {
             $item = \App\Models\ComandaItem::findOrFail($id_item);
-            \App\Models\Produto::findOrFail($item->produto_id)->increment('estoque_atual', $item->quantidade);
+            $this->gestaoEstoqueService->restaurar_por_referencia('comanda_item', $item->id);
             $cid = $item->comanda_id; $item->delete();
             $comanda = \App\Models\Comanda::findOrFail($cid);
             $comanda->valor_total = \App\Models\ComandaItem::where('comanda_id', $cid)->sum(\DB::raw('quantidade * preco_unitario'));

@@ -9,6 +9,9 @@ use Carbon\Carbon;
 use App\Models\User;
 use App\Models\Mesa;
 use App\Models\Produto;
+use App\Models\Fornecedor;
+use App\Models\ProdutoCodigoBarras;
+use App\Models\ProdutoFornecedor;
 use App\Models\Comanda;
 use App\Models\ComandaItem;
 use App\Models\EstoqueEntrada;
@@ -16,12 +19,18 @@ use App\Models\EstoquePerda;
 
 class TenantFakeDataSeeder extends Seeder
 {
+    /**
+     * Popula o tenant com dados de demonstração compatíveis com o novo catálogo.
+     */
     public function run()
     {
         $this->command->info('🧹 Limpando dados antigos...');
         DB::statement('SET FOREIGN_KEY_CHECKS=0;');
         EstoquePerda::truncate();
         EstoqueEntrada::truncate();
+        ProdutoFornecedor::truncate();
+        ProdutoCodigoBarras::truncate();
+        Fornecedor::truncate();
         ComandaItem::truncate();
         Comanda::truncate();
         Produto::truncate();
@@ -79,6 +88,16 @@ class TenantFakeDataSeeder extends Seeder
 
         $produtos_ids = [];
         $data_inicial = Carbon::now()->subDays(730); // 2 Anos Atrás
+        $fornecedor_padrao = Fornecedor::create([
+            'nome_fantasia' => 'Atacadista Master',
+            'razao_social' => 'Atacadista Master LTDA',
+            'cnpj' => '00000000000191',
+            'telefone' => '(11) 99999-0000',
+            'email' => 'compras@atacadistamaster.com',
+            'vendedor' => 'Carlos Henrique',
+            'contato_vendedor' => '(11) 98888-7777',
+            'status_fornecedor' => 'ativo',
+        ]);
 
         foreach ($catalogo_base as $index => $item) {
             $cod_barras = '789' . str_pad($index, 9, '0', STR_PAD_LEFT);
@@ -86,22 +105,37 @@ class TenantFakeDataSeeder extends Seeder
 
             $produto = Produto::create([
                 'nome_produto' => $item[0],
+                'codigo_interno' => (string) ($index + 1),
                 'categoria' => $item[1],
-                'preco_custo' => $item[2],
+                'preco_custo_medio' => $item[2],
                 'preco_venda' => $item[3],
-                'codigo_barras' => $cod_barras,
                 'estoque_atual' => rand(5000, 15000), // Estoque alto para aguentar 2 anos
                 'data_validade' => $validade
             ]);
             $produtos_ids[] = $produto;
 
+            ProdutoCodigoBarras::create([
+                'produto_id' => $produto->id,
+                'codigo_barras' => $cod_barras,
+                'descricao_variacao' => null,
+            ]);
+
+            ProdutoFornecedor::create([
+                'produto_id' => $produto->id,
+                'fornecedor_id' => $fornecedor_padrao->id,
+                'codigo_sku_fornecedor' => 'SKU-' . str_pad((string) ($index + 1), 5, '0', STR_PAD_LEFT),
+                'fator_conversao' => 1,
+                'ultimo_preco_compra' => $item[2],
+            ]);
+
             // Log de entrada inicial
             EstoqueEntrada::create([
                 'produto_id' => $produto->id,
+                'fornecedor_id' => $fornecedor_padrao->id,
                 'usuario_id' => $equipe[0]->id, // Dono
-                'quantidade_adicionada' => $produto->estoque_atual,
-                'custo_unitario_compra' => $produto->preco_custo,
-                'fornecedor' => 'Atacadista Master',
+                'quantidade_comprada' => $produto->estoque_atual,
+                'custo_unitario_compra' => $produto->preco_custo_medio,
+                'custo_total_entrada' => $produto->estoque_atual * $produto->preco_custo_medio,
                 'created_at' => $data_inicial,
                 'updated_at' => $data_inicial
             ]);
@@ -257,7 +291,7 @@ class TenantFakeDataSeeder extends Seeder
                         'usuario_id' => $garcons_ids[array_rand($garcons_ids)],
                         'quantidade' => $qtd_perdida,
                         'motivo' => array_rand(array_flip(['Quebra / Dano', 'Erro de Cozinha', 'Consumo Interno', 'Vencimento'])),
-                        'custo_total_perda' => $prod_perdido->preco_custo * $qtd_perdida,
+                        'custo_total_perda' => $prod_perdido->preco_custo_medio * $qtd_perdida,
                         'created_at' => $data_atual->copy()->setTime(15, 0),
                         'updated_at' => $data_atual->copy()->setTime(15, 0)
                     ]);
