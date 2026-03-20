@@ -35,4 +35,12 @@ return [
         ],
     ],
 
+    'agente_ia' => [
+        'base_url' => env('AGENTE_IA_BASE_URL', 'https://agente-ia.nitec.dev.br'),
+        'timeout_seconds' => (int) env('AGENTE_IA_TIMEOUT_SECONDS', 120),
+        'connect_timeout_seconds' => (int) env('AGENTE_IA_CONNECT_TIMEOUT_SECONDS', 10),
+        'cf_access_client_id' => env('AGENTE_IA_CF_ACCESS_CLIENT_ID'),
+        'cf_access_client_secret' => env('AGENTE_IA_CF_ACCESS_CLIENT_SECRET'),
+    ],
+
 ];

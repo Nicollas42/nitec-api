@@ -10,6 +10,7 @@ use App\Http\Controllers\ProdutoController;
 use App\Http\Controllers\FornecedorController;
 use App\Http\Controllers\ComandaController;
 use App\Http\Controllers\AnalisesController;
+use App\Http\Controllers\AgenteIaController;
 use App\Http\Controllers\FuncionarioController;
 use App\Http\Controllers\PermissaoController; // 🟢 NOVO CONTEUDO
 use App\Http\Middleware\IdempotenciaMiddleware;
@@ -69,6 +70,7 @@ Route::middleware([
 
         // Inteligência de Negócios (BI)
         Route::get('/analises/dashboard', [AnalisesController::class, 'obter_resumo_dashboard']);
+        Route::post('/agente-ia/consultar-pergunta', [AgenteIaController::class, 'consultar_pergunta']);
 
         // Gestão de Equipa
         Route::get('/equipe/listar', [FuncionarioController::class, 'listar_funcionarios']);
