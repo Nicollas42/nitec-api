@@ -39,9 +39,11 @@ class DashboardService
             ->whereBetween('comandas.data_hora_fechamento', [$data_inicio, $data_fim])
             ->select(
                 'users.id as usuario_id', 'users.name', 'users.status_conta', 'users.tipo_contrato',
-                DB::raw('count(comandas.id) as total_mesas'),
+                DB::raw('COUNT(comandas.id) as total_atendimentos'),
+                DB::raw('SUM(CASE WHEN comandas.mesa_id IS NOT NULL THEN 1 ELSE 0 END) as total_mesas'),
+                DB::raw('SUM(CASE WHEN comandas.mesa_id IS NULL THEN 1 ELSE 0 END) as total_balcao'),
                 DB::raw('sum(comandas.valor_total) as total_vendas'),
-                DB::raw('sum(comandas.desconto) as descontos_concedidos'), // 🟢 Adicionado
+                DB::raw('sum(comandas.desconto) as descontos_concedidos'),
                 DB::raw('AVG(TIMESTAMPDIFF(MINUTE, comandas.data_hora_abertura, comandas.data_hora_fechamento)) as tempo_medio_minutos')
             )
             ->groupBy('users.id', 'users.name', 'users.status_conta', 'users.tipo_contrato')
@@ -74,7 +76,9 @@ class DashboardService
                 'name' => $base->name,
                 'status_conta' => $base->status_conta ?? 'ativo',
                 'tipo_contrato' => $base->tipo_contrato ?? 'fixo',
-                'total_mesas' => $base->total_mesas,
+                'total_atendimentos' => (int) $base->total_atendimentos,
+                'total_mesas' => (int) $base->total_mesas,
+                'total_balcao' => (int) $base->total_balcao,
                 'total_vendas' => $base->total_vendas,
                 'descontos_concedidos' => $base->descontos_concedidos ?? 0, // 🟢 Adicionado
                 'tempo_medio_minutos' => $base->tempo_medio_minutos ? round($base->tempo_medio_minutos) : 0,
@@ -261,5 +265,99 @@ class DashboardService
                     ->all();
 
         return $timeline;
+    }
+
+    /**
+     * Retorna os produtos sem giro. Se datas forem nulas, retorna todos os produtos com estoque.
+     */
+    public function obter_encalhados($data_inicio, $data_fim)
+    {
+        $query = Produto::query();
+
+        if ($data_inicio && $data_fim) {
+            $produtos_vendidos_ids = DB::table('comanda_itens')
+                ->join('comandas', 'comanda_itens.comanda_id', '=', 'comandas.id')
+                ->whereBetween('comandas.data_hora_fechamento', [$data_inicio, $data_fim])
+                ->pluck('produto_id')->unique();
+
+            $query->whereNotIn('id', $produtos_vendidos_ids);
+        }
+
+        return $query
+            ->where('estoque_atual', '>', 0)
+            ->select('id', 'nome_produto', 'estoque_atual', 'preco_venda', 'preco_custo_medio', 'data_validade', 'created_at')
+            ->get()
+            ->map(function ($produto) {
+                $ultima_venda = DB::table('comanda_itens')
+                    ->join('comandas', 'comanda_itens.comanda_id', '=', 'comandas.id')
+                    ->where('comanda_itens.produto_id', $produto->id)
+                    ->where('comandas.status_comanda', 'fechada')
+                    ->max('comandas.data_hora_fechamento');
+
+                $data_ref = $ultima_venda ? Carbon::parse($ultima_venda) : Carbon::parse($produto->created_at);
+                $dias_parado = (int) abs(Carbon::now()->startOfDay()->diffInDays($data_ref->startOfDay()));
+
+                $custo_base = $produto->preco_custo_medio > 0 ? $produto->preco_custo_medio : ($produto->preco_venda * 0.5);
+                $prejuizo_potencial = $produto->estoque_atual * $custo_base;
+
+                return [
+                    'nome_produto' => $produto->nome_produto,
+                    'estoque_atual' => $produto->estoque_atual,
+                    'preco_venda' => number_format($produto->preco_venda, 2, '.', ''),
+                    'dias_sem_venda' => $dias_parado,
+                    'data_validade' => $produto->data_validade ? Carbon::parse($produto->data_validade)->format('Y-m-d') : null,
+                    'prejuizo_potencial' => number_format($prejuizo_potencial, 2, '.', '')
+                ];
+            })
+            ->sortByDesc('dias_sem_venda')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Retorna analise comparativa de fornecedores baseada nas entradas de estoque.
+     */
+    public function obter_analise_fornecedores()
+    {
+        $fornecedores = DB::table('estoque_entradas')
+            ->join('fornecedores', 'estoque_entradas.fornecedor_id', '=', 'fornecedores.id')
+            ->select(
+                'fornecedores.id',
+                'fornecedores.nome_fantasia',
+                'fornecedores.status_fornecedor',
+                DB::raw('COUNT(estoque_entradas.id) as total_compras'),
+                DB::raw('SUM(estoque_entradas.custo_total_entrada) as total_investido'),
+                DB::raw('AVG(estoque_entradas.custo_unitario_compra) as media_custo_unitario'),
+                DB::raw('MAX(estoque_entradas.created_at) as ultima_compra'),
+                DB::raw('COUNT(DISTINCT estoque_entradas.produto_id) as qtd_produtos')
+            )
+            ->groupBy('fornecedores.id', 'fornecedores.nome_fantasia', 'fornecedores.status_fornecedor')
+            ->orderByDesc('total_investido')
+            ->get()
+            ->map(function ($f) {
+                return [
+                    'id' => $f->id,
+                    'nome' => $f->nome_fantasia,
+                    'status' => $f->status_fornecedor ?? 'ativo',
+                    'total_compras' => (int) $f->total_compras,
+                    'total_investido' => round($f->total_investido, 2),
+                    'media_custo_unitario' => round($f->media_custo_unitario, 2),
+                    'ultima_compra' => $f->ultima_compra ? Carbon::parse($f->ultima_compra)->format('Y-m-d') : null,
+                    'qtd_produtos' => (int) $f->qtd_produtos,
+                ];
+            });
+
+        $sem_fornecedor = DB::table('estoque_entradas')
+            ->whereNull('fornecedor_id')
+            ->selectRaw('COUNT(*) as total_compras, SUM(custo_total_entrada) as total_investido')
+            ->first();
+
+        return [
+            'fornecedores' => $fornecedores->values()->all(),
+            'sem_fornecedor' => [
+                'total_compras' => (int) ($sem_fornecedor->total_compras ?? 0),
+                'total_investido' => round($sem_fornecedor->total_investido ?? 0, 2),
+            ],
+        ];
     }
 }

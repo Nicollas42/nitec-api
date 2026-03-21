@@ -16,6 +16,22 @@ class AnalisesController extends Controller
         $this->dashboardService = $dashboardService;
     }
 
+    public function obter_encalhados(Request $requisicao)
+    {
+        $data_inicio = $requisicao->filled('data_inicio') ? Carbon::parse($requisicao->input('data_inicio'))->startOfDay() : null;
+        $data_fim    = $requisicao->filled('data_fim')    ? Carbon::parse($requisicao->input('data_fim'))->endOfDay()   : null;
+
+        $encalhados = $this->dashboardService->obter_encalhados($data_inicio, $data_fim);
+
+        return response()->json(['sucesso' => true, 'encalhados' => $encalhados]);
+    }
+
+    public function obter_analise_fornecedores()
+    {
+        $dados = $this->dashboardService->obter_analise_fornecedores();
+        return response()->json(['sucesso' => true, ...$dados]);
+    }
+
     public function obter_resumo_dashboard(Request $requisicao)
     {
         // 1. Recebe e prepara os dados

@@ -13,6 +13,8 @@ use App\Http\Controllers\AnalisesController;
 use App\Http\Controllers\AgenteIaController;
 use App\Http\Controllers\FuncionarioController;
 use App\Http\Controllers\PermissaoController; // 🟢 NOVO CONTEUDO
+use App\Http\Controllers\ConsultasProntasController;
+use App\Http\Controllers\CategoriasController;
 use App\Http\Middleware\IdempotenciaMiddleware;
 use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
 use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
@@ -70,7 +72,15 @@ Route::middleware([
 
         // Inteligência de Negócios (BI)
         Route::get('/analises/dashboard', [AnalisesController::class, 'obter_resumo_dashboard']);
+        Route::get('/analises/encalhados', [AnalisesController::class, 'obter_encalhados']);
+        Route::get('/analises/fornecedores', [AnalisesController::class, 'obter_analise_fornecedores']);
+
+        Route::get('/produtos/categorias', [CategoriasController::class, 'listar']);
+        Route::post('/produtos/categorias', [CategoriasController::class, 'criar']);
+        Route::delete('/produtos/categorias/{nome}', [CategoriasController::class, 'excluir']);
         Route::post('/agente-ia/consultar-pergunta', [AgenteIaController::class, 'consultar_pergunta']);
+        Route::get('/analises/consultas-prontas', [ConsultasProntasController::class, 'listar']);
+        Route::get('/analises/consultas-prontas/{slug}', [ConsultasProntasController::class, 'executar']);
 
         // Gestão de Equipa
         Route::get('/equipe/listar', [FuncionarioController::class, 'listar_funcionarios']);
