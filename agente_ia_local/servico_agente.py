@@ -6,8 +6,8 @@ from time import perf_counter
 from typing import Any
 
 from base_conhecimento import BaseConhecimentoAgente
+from cliente_llm import criar_cliente_llm
 from cliente_mysql import RepositorioMysqlTenancy
-from cliente_ollama import ClienteOllama
 from configuracao import ConfiguracaoAplicacao
 from consultas_prontas import ResolvedorConsultasProntas
 from esquema_erp import TABELAS_PERMITIDAS, montar_contexto_schema, selecionar_tabelas_relevantes
@@ -24,11 +24,7 @@ class ServicoAgenteSql:
 
         self.configuracao = configuracao
         self.repositorio = RepositorioMysqlTenancy(configuracao)
-        self.cliente_ollama = ClienteOllama(
-            base_url=configuracao.ollama_base_url,
-            model=configuracao.ollama_model,
-            timeout_seconds=configuracao.ollama_timeout_seconds,
-        )
+        self.cliente_llm = criar_cliente_llm(configuracao)
         self.base_conhecimento = BaseConhecimentoAgente(
             caminho_arquivo=configuracao.dicionario_dados_path,
             limite_caracteres=configuracao.conhecimento_max_chars,
@@ -84,7 +80,7 @@ class ServicoAgenteSql:
             tabelas_relevantes,
         )
         advertencias.extend(advertencias_conhecimento)
-        plano_sql = self.cliente_ollama.gerar_plano_sql(
+        plano_sql = self.cliente_llm.gerar_plano_sql(
             pergunta=requisicao.pergunta,
             contexto_schema=contexto_schema,
             contexto_conhecimento=contexto_conhecimento,
@@ -98,7 +94,7 @@ class ServicoAgenteSql:
                 tenant_id=tenant.tenant_id,
                 tenant_domain=tenant.tenant_domain,
                 tenant_database=tenant.tenant_database,
-                modelo_llm=self.configuracao.ollama_model,
+                modelo_llm=self.configuracao.obter_modelo_llm_ativo(),
                 duracao_ms=self.calcular_duracao_ms(inicio),
                 advertencias=advertencias,
             )
@@ -156,7 +152,7 @@ class ServicoAgenteSql:
             linhas=linhas_preview,
             total_linhas=len(linhas),
             advertencias=advertencias,
-            modelo_llm=self.configuracao.ollama_model,
+            modelo_llm=self.configuracao.obter_modelo_llm_ativo(),
             duracao_ms=self.calcular_duracao_ms(inicio),
         )
 
@@ -172,7 +168,7 @@ class ServicoAgenteSql:
         """Escolhe entre resposta deterministica rapida ou segunda chamada ao LLM."""
 
         if self.configuracao.usar_llm_resposta_final:
-            return self.cliente_ollama.gerar_resposta_final(
+            return self.cliente_llm.gerar_resposta_final(
                 pergunta=pergunta,
                 sql_gerado=sql_gerado,
                 linhas=linhas,

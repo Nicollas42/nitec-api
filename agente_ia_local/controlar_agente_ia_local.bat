@@ -8,6 +8,8 @@ set "env_local_path=%script_dir%\.env"
 set "python_path=%script_dir%\.venv\Scripts\python.exe"
 set "api_main_path=%script_dir%\main.py"
 set "db_status_script=%script_dir%\testar_conexao_banco.py"
+set "api_runner_path=%script_dir%\executar_api_local.bat"
+set "ssh_runner_path=%script_dir%\executar_tunel_banco.bat"
 set "ollama_path=%LocalAppData%\Programs\Ollama\ollama.exe"
 set "ollama_window_title=agente_ia_ollama"
 set "api_window_title=agente_ia_api_local"
@@ -57,6 +59,7 @@ if not defined AGENTE_SSH_TUNNEL_ENABLED set "AGENTE_SSH_TUNNEL_ENABLED=false"
 if not defined AGENTE_SSH_HOST set "AGENTE_SSH_HOST=187.77.63.216"
 if not defined AGENTE_SSH_PORT set "AGENTE_SSH_PORT=22"
 if not defined AGENTE_SSH_USER set "AGENTE_SSH_USER=root"
+if not defined AGENTE_LLM_PROVIDER set "AGENTE_LLM_PROVIDER=ollama"
 if not defined AGENTE_SSH_LOCAL_BIND_HOST set "AGENTE_SSH_LOCAL_BIND_HOST=127.0.0.1"
 if not defined AGENTE_SSH_LOCAL_DB_PORT set "AGENTE_SSH_LOCAL_DB_PORT=3307"
 if not defined AGENTE_SSH_REMOTE_DB_HOST set "AGENTE_SSH_REMOTE_DB_HOST=127.0.0.1"
@@ -75,10 +78,12 @@ rem Descricao: valida se os arquivos locais necessarios existem.
 :validar_dependencias
 call :carregar_configuracoes_locais
 
-if not exist "%ollama_path%" (
-    echo [ERRO] Ollama nao encontrado em:
-    echo %ollama_path%
-    exit /b 1
+if /i "%AGENTE_LLM_PROVIDER%"=="ollama" (
+    if not exist "%ollama_path%" (
+        echo [ERRO] Ollama nao encontrado em:
+        echo %ollama_path%
+        exit /b 1
+    )
 )
 
 if not exist "%python_path%" (
@@ -96,6 +101,18 @@ if not exist "%api_main_path%" (
 if not exist "%db_status_script%" (
     echo [ERRO] Script de teste do banco nao encontrado em:
     echo %db_status_script%
+    exit /b 1
+)
+
+if not exist "%api_runner_path%" (
+    echo [ERRO] Script auxiliar da API nao encontrado em:
+    echo %api_runner_path%
+    exit /b 1
+)
+
+if /i "%AGENTE_SSH_TUNNEL_ENABLED%"=="true" if not exist "%ssh_runner_path%" (
+    echo [ERRO] Script auxiliar do tunnel nao encontrado em:
+    echo %ssh_runner_path%
     exit /b 1
 )
 
@@ -182,26 +199,28 @@ if /i "%AGENTE_SSH_TUNNEL_ENABLED%"=="true" (
         if not "%AGENTE_SSH_USER%"=="" set "ssh_destino=%AGENTE_SSH_USER%@%AGENTE_SSH_HOST%"
 
         echo [INFO] Iniciando tunnel SSH do banco em %AGENTE_SSH_LOCAL_BIND_HOST%:%AGENTE_SSH_LOCAL_DB_PORT%...
-        start "%ssh_window_title%" cmd /k "title %ssh_window_title% && ssh -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes -N -L %AGENTE_SSH_LOCAL_BIND_HOST%:%AGENTE_SSH_LOCAL_DB_PORT%:%AGENTE_SSH_REMOTE_DB_HOST%:%AGENTE_SSH_REMOTE_DB_PORT% -p %AGENTE_SSH_PORT% %ssh_destino%"
+        start "%ssh_window_title%" cmd /k ""%ssh_runner_path%""
         timeout /t 4 /nobreak >nul
     ) else (
         echo [OK] Tunnel SSH do banco ja esta ativo em %AGENTE_SSH_LOCAL_BIND_HOST%:%AGENTE_SSH_LOCAL_DB_PORT%.
     )
 )
 
-call :porta_ativa %ollama_port%
-if errorlevel 1 (
-    echo [INFO] Iniciando Ollama em 127.0.0.1:%ollama_port%...
-    start "%ollama_window_title%" cmd /k "title %ollama_window_title% && set OLLAMA_HOST=127.0.0.1:%ollama_port% && set OLLAMA_CONTEXT_LENGTH=4096 && set OLLAMA_KEEP_ALIVE=30m && set OLLAMA_NO_CLOUD=1 && set OLLAMA_VULKAN=1 && ""%ollama_path%"" serve"
-    timeout /t 4 /nobreak >nul
-) else (
-    echo [OK] Ollama ja esta ativo em 127.0.0.1:%ollama_port%.
+if /i "%AGENTE_LLM_PROVIDER%"=="ollama" (
+    call :porta_ativa %ollama_port%
+    if errorlevel 1 (
+        echo [INFO] Iniciando Ollama em 127.0.0.1:%ollama_port%...
+        start "%ollama_window_title%" cmd /k "title %ollama_window_title% && set OLLAMA_HOST=127.0.0.1:%ollama_port% && set OLLAMA_CONTEXT_LENGTH=4096 && set OLLAMA_KEEP_ALIVE=30m && set OLLAMA_NO_CLOUD=1 && set OLLAMA_VULKAN=1 && ""%ollama_path%"" serve"
+        timeout /t 4 /nobreak >nul
+    ) else (
+        echo [OK] Ollama ja esta ativo em 127.0.0.1:%ollama_port%.
+    )
 )
 
 call :porta_ativa %api_port%
 if errorlevel 1 (
     echo [INFO] Iniciando API local do agente em 127.0.0.1:%api_port%...
-    start "%api_window_title%" cmd /k "title %api_window_title% && cd /d ""%script_dir%"" && set AGENTE_DB_HOST=%AGENTE_DB_HOST% && set AGENTE_DB_PORT=%AGENTE_DB_PORT% && ""%python_path%"" ""%api_main_path%"""
+    start "%api_window_title%" "%api_runner_path%"
     timeout /t 4 /nobreak >nul
 ) else (
     echo [OK] API local ja esta ativa em 127.0.0.1:%api_port%.
@@ -215,10 +234,10 @@ rem Descricao: para o Ollama e a API local abertos por este script.
 :parar_agente
 echo [INFO] Encerrando componentes locais do agente...
 call :encerrar_janela_cmd "%api_window_title%"
-call :encerrar_janela_cmd "%ollama_window_title%"
+if /i "%AGENTE_LLM_PROVIDER%"=="ollama" call :encerrar_janela_cmd "%ollama_window_title%"
 call :encerrar_janela_cmd "%ssh_window_title%"
 call :encerrar_processo_por_porta %api_port%
-call :encerrar_processo_por_porta %ollama_port%
+if /i "%AGENTE_LLM_PROVIDER%"=="ollama" call :encerrar_processo_por_porta %ollama_port%
 if /i "%AGENTE_SSH_TUNNEL_ENABLED%"=="true" call :encerrar_processo_por_porta %AGENTE_SSH_LOCAL_DB_PORT%
 
 echo.
@@ -256,26 +275,28 @@ if /i "%AGENTE_SSH_TUNNEL_ENABLED%"=="true" (
         if not "%AGENTE_SSH_USER%"=="" set "ssh_destino=%AGENTE_SSH_USER%@%AGENTE_SSH_HOST%"
 
         echo [INFO] Iniciando tunnel SSH do banco em %AGENTE_SSH_LOCAL_BIND_HOST%:%AGENTE_SSH_LOCAL_DB_PORT%...
-        start "%ssh_window_title%" cmd /k "title %ssh_window_title% && ssh -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes -N -L %AGENTE_SSH_LOCAL_BIND_HOST%:%AGENTE_SSH_LOCAL_DB_PORT%:%AGENTE_SSH_REMOTE_DB_HOST%:%AGENTE_SSH_REMOTE_DB_PORT% -p %AGENTE_SSH_PORT% %ssh_destino%"
+        start "%ssh_window_title%" cmd /k ""%ssh_runner_path%""
         timeout /t 4 /nobreak >nul
     ) else (
         echo [OK] Tunnel SSH do banco ja esta ativo em %AGENTE_SSH_LOCAL_BIND_HOST%:%AGENTE_SSH_LOCAL_DB_PORT%.
     )
 )
 
-call :porta_ativa %ollama_port%
-if errorlevel 1 (
-    echo [INFO] Iniciando Ollama em 127.0.0.1:%ollama_port%...
-    start "%ollama_window_title%" cmd /k "title %ollama_window_title% && set OLLAMA_HOST=127.0.0.1:%ollama_port% && set OLLAMA_CONTEXT_LENGTH=4096 && set OLLAMA_KEEP_ALIVE=30m && set OLLAMA_NO_CLOUD=1 && set OLLAMA_VULKAN=1 && ""%ollama_path%"" serve"
-    timeout /t 4 /nobreak >nul
-) else (
-    echo [OK] Ollama ja esta ativo em 127.0.0.1:%ollama_port%.
+if /i "%AGENTE_LLM_PROVIDER%"=="ollama" (
+    call :porta_ativa %ollama_port%
+    if errorlevel 1 (
+        echo [INFO] Iniciando Ollama em 127.0.0.1:%ollama_port%...
+        start "%ollama_window_title%" cmd /k "title %ollama_window_title% && set OLLAMA_HOST=127.0.0.1:%ollama_port% && set OLLAMA_CONTEXT_LENGTH=4096 && set OLLAMA_KEEP_ALIVE=30m && set OLLAMA_NO_CLOUD=1 && set OLLAMA_VULKAN=1 && ""%ollama_path%"" serve"
+        timeout /t 4 /nobreak >nul
+    ) else (
+        echo [OK] Ollama ja esta ativo em 127.0.0.1:%ollama_port%.
+    )
 )
 
 call :porta_ativa %api_port%
 if errorlevel 1 (
     echo [INFO] Iniciando API local do agente em 127.0.0.1:%api_port%...
-    start "%api_window_title%" cmd /k "title %api_window_title% && cd /d ""%script_dir%"" && set AGENTE_DB_HOST=%AGENTE_DB_HOST% && set AGENTE_DB_PORT=%AGENTE_DB_PORT% && ""%python_path%"" ""%api_main_path%"""
+    start "%api_window_title%" "%api_runner_path%"
     timeout /t 4 /nobreak >nul
 ) else (
     echo [OK] API local ja esta ativa em 127.0.0.1:%api_port%.
@@ -287,10 +308,10 @@ rem Descricao: implementa a parte de parada sem retorno ao menu.
 :parar_agente_sem_retorno
 echo [INFO] Encerrando componentes locais do agente...
 call :encerrar_janela_cmd "%api_window_title%"
-call :encerrar_janela_cmd "%ollama_window_title%"
+if /i "%AGENTE_LLM_PROVIDER%"=="ollama" call :encerrar_janela_cmd "%ollama_window_title%"
 call :encerrar_janela_cmd "%ssh_window_title%"
 call :encerrar_processo_por_porta %api_port%
-call :encerrar_processo_por_porta %ollama_port%
+if /i "%AGENTE_LLM_PROVIDER%"=="ollama" call :encerrar_processo_por_porta %ollama_port%
 if /i "%AGENTE_SSH_TUNNEL_ENABLED%"=="true" call :encerrar_processo_por_porta %AGENTE_SSH_LOCAL_DB_PORT%
 exit /b 0
 
@@ -302,11 +323,15 @@ echo ============================================
 echo Status do Agente IA Local
 echo ============================================
 
-call :porta_ativa %ollama_port%
-if errorlevel 1 (
-    echo Ollama: parado
+if /i "%AGENTE_LLM_PROVIDER%"=="ollama" (
+    call :porta_ativa %ollama_port%
+    if errorlevel 1 (
+        echo Ollama: parado
+    ) else (
+        echo Ollama: ativo em 127.0.0.1:%ollama_port%
+    )
 ) else (
-    echo Ollama: ativo em 127.0.0.1:%ollama_port%
+    echo Ollama: desabilitado para provider %AGENTE_LLM_PROVIDER%
 )
 
 call :porta_ativa %api_port%

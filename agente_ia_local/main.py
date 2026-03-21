@@ -28,7 +28,8 @@ def raiz() -> dict[str, str]:
     return {
         "status": "ok",
         "servico": "agente_ia_local",
-        "modelo_llm": CONFIGURACAO.ollama_model,
+        "provedor_llm": CONFIGURACAO.llm_provider,
+        "modelo_llm": CONFIGURACAO.obter_modelo_llm_ativo(),
     }
 
 
@@ -38,7 +39,8 @@ def health() -> dict[str, str]:
 
     return {
         "status": "ok",
-        "modelo_llm": CONFIGURACAO.ollama_model,
+        "provedor_llm": CONFIGURACAO.llm_provider,
+        "modelo_llm": CONFIGURACAO.obter_modelo_llm_ativo(),
         "ollama_base_url": CONFIGURACAO.ollama_base_url,
     }
 

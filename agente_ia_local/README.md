@@ -8,7 +8,7 @@ API local para perguntas em linguagem natural sobre os bancos tenant do ERP.
 - le o schema real do banco do tenant
 - injeta apenas o recorte relevante do dicionario do ERP
 - tenta usar consultas prontas para perguntas frequentes antes de acionar o modelo
-- pede ao Ollama para gerar SQL MySQL
+- pede ao Ollama ou Gemini para gerar SQL MySQL
 - valida que o SQL e somente leitura
 - executa a consulta e devolve uma resposta em portugues
 
@@ -24,6 +24,13 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe main.py
 ```
+
+## Providers de LLM
+
+- `AGENTE_LLM_PROVIDER=ollama`: usa o modelo local configurado em `AGENTE_OLLAMA_MODEL`.
+- `AGENTE_LLM_PROVIDER=gemini`: usa o modelo hospedado configurado em `AGENTE_GEMINI_MODEL`.
+- Para Gemini, configure `AGENTE_GEMINI_API_KEY` ou `GEMINI_API_KEY`.
+- O modelo sugerido para free tier e testes de baixo custo e `gemini-2.5-flash-lite`.
 
 ## Como usar o banco da VPS
 
@@ -70,3 +77,4 @@ Invoke-RestMethod `
 - Mesmo no fallback, o SQL passa por validacao e a sessao e forzada para leitura.
 - O script `controlar_agente_ia_local.bat` agora pode subir tambem o tunnel SSH do banco quando `AGENTE_SSH_TUNNEL_ENABLED=true`.
 - O script `testar_conexao_banco.py` ajuda a confirmar se as credenciais atuais conseguem abrir a base central antes de testar pelo site.
+- No free tier do Gemini, a propria tabela de pricing indica que os dados podem ser usados para melhorar os produtos. Use com cautela em dados sensiveis.

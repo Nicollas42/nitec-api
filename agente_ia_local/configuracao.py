@@ -84,9 +84,12 @@ class ConfiguracaoAplicacao:
     api_host: str
     api_port: int
     api_log_level: str
+    llm_provider: str
     ollama_base_url: str
     ollama_model: str
     ollama_timeout_seconds: int
+    gemini_api_key: str | None
+    gemini_model: str
     schema_cache_seconds: int
     sql_row_limit: int
     sql_preview_limit: int
@@ -111,14 +114,18 @@ class ConfiguracaoAplicacao:
         """Carrega a configuracao consolidada da API local."""
 
         laravel_env_path = carregar_arquivos_env(base_dir)
+        llm_provider = ler_string_com_padrao("AGENTE_LLM_PROVIDER", "ollama").lower()
 
-        return cls(
+        configuracao = cls(
             api_host=os.getenv("AGENTE_API_HOST", "127.0.0.1").strip(),
             api_port=ler_inteiro("AGENTE_API_PORT", 8001),
             api_log_level=os.getenv("AGENTE_API_LOG_LEVEL", "info").strip(),
+            llm_provider=llm_provider,
             ollama_base_url=os.getenv("AGENTE_OLLAMA_BASE_URL", "http://127.0.0.1:11434").strip(),
             ollama_model=os.getenv("AGENTE_OLLAMA_MODEL", "qwen2.5:7b").strip(),
             ollama_timeout_seconds=ler_inteiro("AGENTE_OLLAMA_TIMEOUT_SECONDS", 180),
+            gemini_api_key=os.getenv("AGENTE_GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", "")).strip() or None,
+            gemini_model=os.getenv("AGENTE_GEMINI_MODEL", "gemini-2.5-flash-lite").strip(),
             schema_cache_seconds=ler_inteiro("AGENTE_SCHEMA_CACHE_SECONDS", 300),
             sql_row_limit=ler_inteiro("AGENTE_SQL_ROW_LIMIT", 200),
             sql_preview_limit=ler_inteiro("AGENTE_SQL_PREVIEW_LIMIT", 20),
@@ -142,3 +149,22 @@ class ConfiguracaoAplicacao:
             usar_llm_resposta_final=ler_booleano("AGENTE_USAR_LLM_RESPOSTA_FINAL", False),
             laravel_env_path=laravel_env_path,
         )
+        configuracao.validar_llm_provider()
+        return configuracao
+
+    def validar_llm_provider(self) -> None:
+        """Valida se o provedor escolhido esta suportado e tem dados minimos."""
+
+        if self.llm_provider not in {"ollama", "gemini"}:
+            raise ValueError("AGENTE_LLM_PROVIDER deve ser 'ollama' ou 'gemini'.")
+
+        if self.llm_provider == "gemini" and not self.gemini_api_key:
+            raise ValueError("Configure AGENTE_GEMINI_API_KEY ou GEMINI_API_KEY para usar o provider gemini.")
+
+    def obter_modelo_llm_ativo(self) -> str:
+        """Retorna o nome do modelo ativo conforme o provider configurado."""
+
+        if self.llm_provider == "gemini":
+            return self.gemini_model
+
+        return self.ollama_model
