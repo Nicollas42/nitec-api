@@ -61,12 +61,16 @@ class AgenteIaService
     }
 
     /**
-     * Monta os headers exigidos pelo Cloudflare Access para autenticar a VPS.
+     * Monta os headers de autenticacao do agente quando um gateway externo for usado.
      *
      * @return array<string, string>
      */
     private function obter_headers_autenticacao(): array
     {
+        if (! (bool) config('services.agente_ia.usar_cloudflare_access', true)) {
+            return [];
+        }
+
         $client_id = (string) config('services.agente_ia.cf_access_client_id');
         $client_secret = (string) config('services.agente_ia.cf_access_client_secret');
 

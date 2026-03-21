@@ -1,6 +1,6 @@
-# Agente IA Local
+# Agente IA
 
-API local para perguntas em linguagem natural sobre os bancos tenant do ERP.
+API para perguntas em linguagem natural sobre os bancos tenant do ERP.
 
 ## O que esta pasta faz
 
@@ -16,13 +16,24 @@ API local para perguntas em linguagem natural sobre os bancos tenant do ERP.
 
 - `POST /api/v1/consultar-agente`
 
-## Como subir localmente
+## Como subir localmente no Windows
 
 ```powershell
 cd C:\PDP\nitec_api\agente_ia_local
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe main.py
+```
+
+## Como subir na VPS Linux
+
+```bash
+cd /var/www/nitec-api/agente_ia_local
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+cp .env.example .env
+chmod +x executar_api_vps.sh
+.venv/bin/python main.py
 ```
 
 ## Providers de LLM
@@ -32,7 +43,18 @@ python -m venv .venv
 - Para Gemini, configure `AGENTE_GEMINI_API_KEY` ou `GEMINI_API_KEY`.
 - O modelo sugerido para free tier e testes de baixo custo e `gemini-2.5-flash-lite`.
 
-## Como usar o banco da VPS
+## Como rodar na propria VPS
+
+1. Use `.env.example` como base.
+2. Configure `AGENTE_LLM_PROVIDER=gemini`.
+3. Configure `AGENTE_GEMINI_API_KEY`.
+4. Configure `AGENTE_DB_HOST=127.0.0.1` e `AGENTE_DB_PORT=3306`.
+5. Configure `AGENTE_DB_READONLY_USERNAME` e `AGENTE_DB_READONLY_PASSWORD`.
+6. Mantenha `AGENTE_SSH_TUNNEL_ENABLED=false`.
+7. Aponte `AGENTE_DICIONARIO_DADOS_PATH=./DICIONARIO_DE_DADOS_ERP.md`.
+8. Suba a API em `127.0.0.1:8001` e faça o Laravel consumir esse endpoint local.
+
+## Como usar o banco da VPS a partir de outro computador
 
 1. Copie `.env.example` para `.env`.
 2. Preencha `AGENTE_DB_DATABASE`, `AGENTE_DB_USERNAME` e `AGENTE_DB_PASSWORD` com um usuario valido do MySQL da VPS.
@@ -78,3 +100,4 @@ Invoke-RestMethod `
 - O script `controlar_agente_ia_local.bat` agora pode subir tambem o tunnel SSH do banco quando `AGENTE_SSH_TUNNEL_ENABLED=true`.
 - O script `testar_conexao_banco.py` ajuda a confirmar se as credenciais atuais conseguem abrir a base central antes de testar pelo site.
 - No free tier do Gemini, a propria tabela de pricing indica que os dados podem ser usados para melhorar os produtos. Use com cautela em dados sensiveis.
+- Para producao sem depender do PC, rode esta API diretamente na VPS e configure o Laravel para usar `http://127.0.0.1:8001`.

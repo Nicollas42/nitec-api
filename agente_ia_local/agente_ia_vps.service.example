@@ -1,0 +1,16 @@
+[Unit]
+Description=API do Agente IA Nitec
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/nitec-api/agente_ia_local
+ExecStart=/var/www/nitec-api/agente_ia_local/.venv/bin/python /var/www/nitec-api/agente_ia_local/main.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

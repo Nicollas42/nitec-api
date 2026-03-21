@@ -36,9 +36,10 @@ return [
     ],
 
     'agente_ia' => [
-        'base_url' => env('AGENTE_IA_BASE_URL', 'https://agente-ia.nitec.dev.br'),
+        'base_url' => env('AGENTE_IA_BASE_URL', 'http://127.0.0.1:8001'),
         'timeout_seconds' => (int) env('AGENTE_IA_TIMEOUT_SECONDS', 120),
         'connect_timeout_seconds' => (int) env('AGENTE_IA_CONNECT_TIMEOUT_SECONDS', 10),
+        'usar_cloudflare_access' => filter_var(env('AGENTE_IA_USAR_CLOUDFLARE_ACCESS', false), FILTER_VALIDATE_BOOL),
         'cf_access_client_id' => env('AGENTE_IA_CF_ACCESS_CLIENT_ID'),
         'cf_access_client_secret' => env('AGENTE_IA_CF_ACCESS_CLIENT_SECRET'),
     ],
