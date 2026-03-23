@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Mesa;
+use App\Models\PedidoCozinha;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -60,12 +61,25 @@ class MesaController extends Controller
         try {
             $informacoes_da_mesa = Mesa::with(['listar_comandas' => function($consulta_sql) {
                 $consulta_sql->where('status_comanda', 'aberta')
-                             ->with(['listar_itens.buscar_produto', 'buscar_cliente', 'buscar_usuario']);
+                             ->with(['listar_itens.buscar_produto', 'listar_itens.adicionais.buscar_item_adicional', 'buscar_cliente', 'buscar_usuario']);
             }])->findOrFail($id_da_mesa);
 
+            // Enriquecer cada item com status de cozinha
+            $status_cozinha_por_item = PedidoCozinha::whereIn(
+                'comanda_item_id',
+                $informacoes_da_mesa->listar_comandas->flatMap(fn($c) => $c->listar_itens->pluck('id'))
+            )->pluck('status', 'comanda_item_id');
+
+            $dados = $informacoes_da_mesa->toArray();
+            foreach ($dados['listar_comandas'] as &$comanda) {
+                foreach ($comanda['listar_itens'] as &$item) {
+                    $item['status_cozinha'] = $status_cozinha_por_item[$item['id']] ?? null;
+                }
+            }
+
             return response()->json([
-                'sucesso' => true, 
-                'dados' => $informacoes_da_mesa
+                'sucesso' => true,
+                'dados' => $dados
             ], 200);
             
         } catch (\Exception $erro_sistema) {

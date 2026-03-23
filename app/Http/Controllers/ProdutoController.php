@@ -20,7 +20,7 @@ class ProdutoController extends Controller
     public function listar_produtos(): JsonResponse
     {
         $produtos = Produto::query()
-            ->with(['codigos_barras', 'produto_fornecedores', 'estoque_lotes.fornecedor'])
+            ->with(['codigos_barras', 'produto_fornecedores', 'estoque_lotes.fornecedor', 'grupos_adicionais.itens'])
             ->orderBy('nome_produto')
             ->get()
             ->map(fn (Produto $produto) => $this->mapear_produto_listagem($produto))
@@ -37,7 +37,7 @@ class ProdutoController extends Controller
     public function detalhes_produto(int $id): JsonResponse
     {
         $produto = Produto::query()
-            ->with(['codigos_barras', 'produto_fornecedores.fornecedor', 'estoque_lotes.fornecedor'])
+            ->with(['codigos_barras', 'produto_fornecedores.fornecedor', 'estoque_lotes.fornecedor', 'grupos_adicionais.itens'])
             ->findOrFail($id);
 
         return response()->json([
@@ -83,6 +83,16 @@ class ProdutoController extends Controller
     }
 
     /**
+     * Atualiza apenas o campo requer_cozinha do produto.
+     */
+    public function alternar_requer_cozinha(Request $request, int $id): JsonResponse
+    {
+        $produto = Produto::findOrFail($id);
+        $produto->update(['requer_cozinha' => (bool) $request->input('requer_cozinha', false)]);
+        return response()->json(['status' => true, 'requer_cozinha' => $produto->requer_cozinha]);
+    }
+
+    /**
      * Salva os dados principais do produto e sincroniza os relacionamentos.
      */
     private function salvar_produto(Request $request, ?Produto $produto = null): JsonResponse
@@ -99,6 +109,7 @@ class ProdutoController extends Controller
                 'preco_custo_medio',
                 'margem_lucro_percentual',
                 'categoria',
+                'requer_cozinha',
             ])->toArray();
 
             if ($produto instanceof Produto) {
@@ -109,7 +120,12 @@ class ProdutoController extends Controller
 
             $this->sincronizar_codigos_barras($produto, $dados_validados['codigos_barras_adicionais'] ?? []);
             $this->sincronizar_fornecedores_vinculados($produto, $dados_validados['fornecedores_vinculados'] ?? []);
-            $produto->refresh()->load(['codigos_barras', 'produto_fornecedores.fornecedor', 'estoque_lotes.fornecedor']);
+
+            if (array_key_exists('grupos_adicionais_ids', $dados_validados)) {
+                $produto->grupos_adicionais()->sync($dados_validados['grupos_adicionais_ids'] ?? []);
+            }
+
+            $produto->refresh()->load(['codigos_barras', 'produto_fornecedores.fornecedor', 'estoque_lotes.fornecedor', 'grupos_adicionais.itens']);
         });
 
         return response()->json([
@@ -149,6 +165,9 @@ class ProdutoController extends Controller
             'fornecedores_vinculados.*.unidade_embalagem'        => 'nullable|string|max:10',
             'fornecedores_vinculados.*.fator_conversao'          => 'nullable|integer|min:1',
             'fornecedores_vinculados.*.custo_embalagem'          => 'nullable|numeric|min:0',
+            'grupos_adicionais_ids'                                  => 'nullable|array',
+            'grupos_adicionais_ids.*'                                => 'integer|exists:grupos_adicionais,id',
+            'requer_cozinha'                                         => 'nullable|boolean',
         ]);
 
         $dados_validados['unidade_medida']          = $dados_validados['unidade_medida'] ?? 'UN';
@@ -372,6 +391,20 @@ class ProdutoController extends Controller
             'quantidade_fornecedores_vinculados' => $produto->produto_fornecedores->count(),
             'pode_expandir_estoque'           => count($estoque_por_fornecedor) > 1,
             'estoque_por_fornecedor'          => $estoque_por_fornecedor,
+            'requer_cozinha'                  => (bool) $produto->requer_cozinha,
+            'tem_adicionais'                  => $produto->relationLoaded('grupos_adicionais') && $produto->grupos_adicionais->count() > 0,
+            'grupos_adicionais'               => $produto->relationLoaded('grupos_adicionais')
+                ? $produto->grupos_adicionais->map(fn ($g) => [
+                    'id' => $g->id,
+                    'nome' => $g->nome,
+                    'maximo_selecoes' => $g->maximo_selecoes,
+                    'itens' => $g->itens->map(fn ($i) => [
+                        'id' => $i->id,
+                        'nome' => $i->nome,
+                        'preco' => $i->preco,
+                    ])->values()->all(),
+                ])->values()->all()
+                : [],
         ];
     }
 
@@ -382,7 +415,7 @@ class ProdutoController extends Controller
      */
     private function mapear_produto_detalhes(Produto $produto): array
     {
-        $produto->loadMissing(['codigos_barras', 'produto_fornecedores.fornecedor', 'estoque_lotes.fornecedor']);
+        $produto->loadMissing(['codigos_barras', 'produto_fornecedores.fornecedor', 'estoque_lotes.fornecedor', 'grupos_adicionais.itens']);
 
         return array_merge(
             $this->mapear_produto_listagem($produto),
@@ -397,6 +430,7 @@ class ProdutoController extends Controller
                     })
                     ->values()
                     ->all(),
+                'grupos_adicionais_ids' => $produto->grupos_adicionais->pluck('id')->values()->all(),
                 'fornecedores_vinculados' => $produto->produto_fornecedores
                     ->map(function (ProdutoFornecedor $produto_fornecedor): array {
                         return [

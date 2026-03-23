@@ -27,4 +27,12 @@ class ComandaItem extends Model
     {
         return $this->belongsTo(Produto::class, 'produto_id');
     }
+
+    /**
+     * Retorna os adicionais escolhidos para este item da comanda.
+     */
+    public function adicionais()
+    {
+        return $this->hasMany(ComandaItemAdicional::class, 'comanda_item_id');
+    }
 }

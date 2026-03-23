@@ -48,7 +48,13 @@ class ComandaController extends Controller
             else return response()->json(['status' => false, 'mensagem' => 'Nenhuma conta aberta nesta mesa.'], 404);
         }
 
-        $dados = $requisicao->validate(['itens' => 'required|array', 'itens.*.produto_id' => 'required', 'itens.*.quantidade' => 'required|integer', 'itens.*.preco_unitario' => 'required|numeric']);
+        $dados = $requisicao->validate([
+            'itens' => 'required|array', 'itens.*.produto_id' => 'required', 'itens.*.quantidade' => 'required|integer', 'itens.*.preco_unitario' => 'required|numeric',
+            'itens.*.adicionais' => 'nullable|array',
+            'itens.*.adicionais.*.item_adicional_id' => 'required|integer',
+            'itens.*.adicionais.*.quantidade' => 'nullable|integer|min:1',
+            'itens.*.adicionais.*.preco_unitario' => 'required|numeric|min:0',
+        ]);
         DB::beginTransaction();
         try {
             $comanda = $this->comandaService->adicionar_itens($id_comanda, $dados['itens']);
@@ -59,7 +65,13 @@ class ComandaController extends Controller
 
     public function venda_balcao(Request $requisicao)
     {
-        $dados = $requisicao->validate(['itens' => 'required|array', 'itens.*.produto_id' => 'required', 'itens.*.quantidade' => 'required', 'itens.*.preco_unitario' => 'required', 'desconto' => 'nullable|numeric']);
+        $dados = $requisicao->validate([
+            'itens' => 'required|array', 'itens.*.produto_id' => 'required', 'itens.*.quantidade' => 'required', 'itens.*.preco_unitario' => 'required', 'desconto' => 'nullable|numeric',
+            'itens.*.adicionais' => 'nullable|array',
+            'itens.*.adicionais.*.item_adicional_id' => 'required|integer',
+            'itens.*.adicionais.*.quantidade' => 'nullable|integer|min:1',
+            'itens.*.adicionais.*.preco_unitario' => 'required|numeric|min:0',
+        ]);
         DB::beginTransaction();
         try {
             $this->comandaService->processar_venda_balcao($dados['itens'], $dados['desconto'], $requisicao->user()->id);
@@ -123,14 +135,16 @@ class ComandaController extends Controller
         } catch (\Exception $e) { DB::rollBack(); return response()->json(['sucesso' => false], 500); }
     }
 
-    public function buscar_comanda($id) { 
+    public function buscar_comanda($id) {
+        $eager = ['listar_itens.buscar_produto', 'listar_itens.adicionais.buscar_item_adicional'];
+
         // 🟢 TRADUTOR OFFLINE (Caso a internet volte exatamente quando ele clica na conta fantasma)
         if (Str::startsWith($id, 'off_')) {
-            $comanda_ativa = \App\Models\Comanda::with('listar_itens.buscar_produto')->where('mesa_id', str_replace('off_', '', $id))->where('status_comanda', 'aberta')->first();
+            $comanda_ativa = \App\Models\Comanda::with($eager)->where('mesa_id', str_replace('off_', '', $id))->where('status_comanda', 'aberta')->first();
             if ($comanda_ativa) return response()->json(['sucesso' => true, 'dados' => $comanda_ativa]);
             return response()->json(['sucesso' => false, 'mensagem' => 'Comanda não encontrada'], 404);
         }
-        return response()->json(['sucesso' => true, 'dados' => \App\Models\Comanda::with('listar_itens.buscar_produto')->findOrFail($id)]); 
+        return response()->json(['sucesso' => true, 'dados' => \App\Models\Comanda::with($eager)->findOrFail($id)]);
     }
 
     /**

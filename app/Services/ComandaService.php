@@ -9,6 +9,9 @@ use App\Models\Cliente;
 use App\Models\ComandaItem;
 use App\Models\Produto;
 use App\Models\EstoquePerda;
+use App\Models\ComandaItemAdicional;
+use App\Models\ItemAdicional;
+use App\Models\PedidoCozinha;
 use Carbon\Carbon;
 
 class ComandaService
@@ -34,7 +37,7 @@ class ComandaService
     public function obter_comandas_do_dia()
     {
         $hoje = Carbon::today();
-        return Comanda::with(['buscar_mesa', 'buscar_cliente', 'listar_itens.buscar_produto'])
+        return Comanda::with(['buscar_mesa', 'buscar_cliente', 'listar_itens.buscar_produto', 'listar_itens.adicionais.buscar_item_adicional'])
             ->where('status_comanda', 'aberta')
             ->orWhere(function($query) use ($hoje) {
                 $query->whereIn('status_comanda', ['fechada', 'cancelada'])
@@ -101,15 +104,63 @@ class ComandaService
     {
         $subtotal = 0;
         foreach ($itens as $item) {
-            $subtotal += ($item['quantidade'] * $item['preco_unitario']);
+            // Custo dos adicionais por unidade do produto
+            $custo_adicionais = 0;
+            if (!empty($item['adicionais'])) {
+                foreach ($item['adicionais'] as $ad) {
+                    $custo_adicionais += ($ad['preco_unitario'] ?? 0) * ($ad['quantidade'] ?? 1);
+                }
+            }
+
+            $subtotal += $item['quantidade'] * ($item['preco_unitario'] + $custo_adicionais);
+
             $comanda_item = ComandaItem::create([
                 'comanda_id' => $comanda_id, 'produto_id' => $item['produto_id'],
                 'quantidade' => $item['quantidade'], 'preco_unitario' => $item['preco_unitario'],
                 'data_hora_lancamento' => $data_hora
             ]);
 
+            // Persiste os adicionais escolhidos
+            if (!empty($item['adicionais'])) {
+                foreach ($item['adicionais'] as $ad) {
+                    ComandaItemAdicional::create([
+                        'comanda_item_id'    => $comanda_item->id,
+                        'item_adicional_id'  => $ad['item_adicional_id'],
+                        'quantidade'         => $ad['quantidade'] ?? 1,
+                        'preco_unitario'     => $ad['preco_unitario'] ?? 0,
+                    ]);
+                }
+            }
+
             $produto = Produto::query()->lockForUpdate()->findOrFail($item['produto_id']);
             $this->gestaoEstoqueService->consumir_para_comanda_item($produto, (int) $item['quantidade'], $comanda_item->id);
+
+            // Cria pedido de cozinha se o produto requer preparo
+            if ($produto->requer_cozinha) {
+                $comanda = Comanda::find($comanda_id);
+                $adicionais_texto = null;
+                if (!empty($item['adicionais'])) {
+                    $ids = collect($item['adicionais'])->pluck('item_adicional_id')->filter()->toArray();
+                    $nomes = ItemAdicional::whereIn('id', $ids)->pluck('nome', 'id');
+                    $adicionais_texto = collect($item['adicionais'])
+                        ->map(function ($ad) use ($nomes) {
+                            $qtd = $ad['quantidade'] ?? 1;
+                            $nome = $nomes[$ad['item_adicional_id']] ?? 'Adicional';
+                            return ($qtd > 1 ? "{$qtd}x " : '') . $nome;
+                        })
+                        ->implode(', ');
+                }
+                PedidoCozinha::create([
+                    'comanda_item_id'  => $comanda_item->id,
+                    'comanda_id'       => $comanda_id,
+                    'mesa_id'          => $comanda?->mesa_id,
+                    'produto_nome'     => $produto->nome_produto,
+                    'adicionais_texto' => $adicionais_texto,
+                    'quantidade'       => $item['quantidade'],
+                    'status'           => 'pendente',
+                    'visto_pelo_garcom'=> false,
+                ]);
+            }
         }
         return $subtotal;
     }

@@ -15,6 +15,8 @@ use App\Http\Controllers\FuncionarioController;
 use App\Http\Controllers\PermissaoController; // 🟢 NOVO CONTEUDO
 use App\Http\Controllers\ConsultasProntasController;
 use App\Http\Controllers\CategoriasController;
+use App\Http\Controllers\AdicionalController;
+use App\Http\Controllers\CozinhaController;
 use App\Http\Middleware\IdempotenciaMiddleware;
 use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
 use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
@@ -50,6 +52,7 @@ Route::middleware([
         Route::post('/cadastrar-produto', [ProdutoController::class, 'cadastrar_produto']);
         Route::post('/produtos/editar/{id}', [ProdutoController::class, 'atualizar_produto']);
         Route::delete('/produtos/excluir/{id}', [ProdutoController::class, 'excluir_produto']);
+        Route::post('/produtos/{id}/requer-cozinha', [ProdutoController::class, 'alternar_requer_cozinha']);
         Route::get('/listar-fornecedores', [FornecedorController::class, 'listar_fornecedores']);
         Route::post('/fornecedores/cadastrar', [FornecedorController::class, 'cadastrar_fornecedor']);
         Route::post('/fornecedores/editar/{id}', [FornecedorController::class, 'atualizar_fornecedor']);
@@ -81,6 +84,21 @@ Route::middleware([
         Route::post('/agente-ia/consultar-pergunta', [AgenteIaController::class, 'consultar_pergunta']);
         Route::get('/analises/consultas-prontas', [ConsultasProntasController::class, 'listar']);
         Route::get('/analises/consultas-prontas/{slug}', [ConsultasProntasController::class, 'executar']);
+
+        // Gestão de Adicionais
+        Route::get('/grupos-adicionais', [AdicionalController::class, 'listar_grupos']);
+        Route::post('/grupos-adicionais', [AdicionalController::class, 'criar_grupo']);
+        Route::put('/grupos-adicionais/{id}', [AdicionalController::class, 'editar_grupo']);
+        Route::delete('/grupos-adicionais/{id}', [AdicionalController::class, 'excluir_grupo']);
+        Route::post('/grupos-adicionais/{id}/itens', [AdicionalController::class, 'criar_item']);
+        Route::put('/itens-adicionais/{id}', [AdicionalController::class, 'editar_item']);
+        Route::delete('/itens-adicionais/{id}', [AdicionalController::class, 'excluir_item']);
+
+        // Cozinha
+        Route::get('/cozinha/pedidos', [CozinhaController::class, 'listar_pedidos']);
+        Route::put('/cozinha/pedido/{id}/status', [CozinhaController::class, 'atualizar_status']);
+        Route::get('/cozinha/status-mesas', [CozinhaController::class, 'status_mesas']);
+        Route::post('/cozinha/marcar-visto/{mesa_id}', [CozinhaController::class, 'marcar_visto']);
 
         // Gestão de Equipa
         Route::get('/equipe/listar', [FuncionarioController::class, 'listar_funcionarios']);

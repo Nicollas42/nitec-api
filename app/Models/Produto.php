@@ -26,6 +26,11 @@ class Produto extends Model
         'categoria',
         'estoque_atual',
         'data_validade',
+        'requer_cozinha',
+    ];
+
+    protected $casts = [
+        'requer_cozinha' => 'boolean',
     ];
 
     /**
@@ -67,5 +72,13 @@ class Produto extends Model
     {
         return $this->belongsToMany(Fornecedor::class, 'produto_fornecedor')
             ->withPivot(['id', 'codigo_sku_fornecedor', 'unidade_embalagem', 'fator_conversao', 'ultimo_preco_compra']);
+    }
+
+    /**
+     * Retorna os grupos de adicionais vinculados a este produto.
+     */
+    public function grupos_adicionais(): BelongsToMany
+    {
+        return $this->belongsToMany(GrupoAdicional::class, 'produto_grupos_adicionais');
     }
 }
