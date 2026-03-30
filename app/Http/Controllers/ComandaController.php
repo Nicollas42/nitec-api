@@ -71,10 +71,11 @@ class ComandaController extends Controller
             'itens.*.adicionais.*.item_adicional_id' => 'required|integer',
             'itens.*.adicionais.*.quantidade' => 'nullable|integer|min:1',
             'itens.*.adicionais.*.preco_unitario' => 'required|numeric|min:0',
+            'forma_pagamento' => 'nullable|string|in:dinheiro,pix,debito,credito',
         ]);
         DB::beginTransaction();
         try {
-            $this->comandaService->processar_venda_balcao($dados['itens'], $dados['desconto'], $requisicao->user()->id);
+            $this->comandaService->processar_venda_balcao($dados['itens'], $dados['desconto'], $requisicao->user()->id, $dados['forma_pagamento'] ?? null);
             DB::commit();
             return response()->json(['sucesso' => true, 'mensagem' => 'Venda Balcão concluída!']);
         } catch (\Exception $e) { DB::rollBack(); return response()->json(['sucesso' => false], 500); }
@@ -89,7 +90,11 @@ class ComandaController extends Controller
             else return response()->json(['sucesso' => false, 'mensagem' => 'Nenhuma conta aberta para fechar.'], 404);
         }
 
-        $dados = $requisicao->validate(['data_hora_fechamento' => 'required|date', 'desconto' => 'nullable|numeric']);
+        $dados = $requisicao->validate([
+            'data_hora_fechamento' => 'required|date',
+            'desconto' => 'nullable|numeric',
+            'forma_pagamento' => 'nullable|string|in:dinheiro,pix,debito,credito',
+        ]);
         DB::beginTransaction();
         try {
             $comanda = \App\Models\Comanda::with('listar_itens')->findOrFail($id);
@@ -98,7 +103,7 @@ class ComandaController extends Controller
                 DB::commit();
                 return response()->json(['sucesso' => true, 'mensagem' => '✔️ Conta vazia anulada e descartada!']);
             }
-            $this->comandaService->fechar_pagamento($id, $dados['data_hora_fechamento'], $dados['desconto']);
+            $this->comandaService->fechar_pagamento($id, $dados['data_hora_fechamento'], $dados['desconto'], $dados['forma_pagamento'] ?? null);
             DB::commit();
             return response()->json(['sucesso' => true, 'mensagem' => '💳 Pagamento confirmado!']);
         } catch (\Exception $e) { DB::rollBack(); return response()->json(['sucesso' => false], 500); }

@@ -72,13 +72,14 @@ class ComandaService
     /**
      * Processa uma venda de balcao criando a comanda fechada e baixando estoque em FIFO.
      */
-    public function processar_venda_balcao($itens, $desconto, $usuario_id)
+    public function processar_venda_balcao($itens, $desconto, $usuario_id, $forma_pagamento = null)
     {
         $agora = Carbon::now();
         $comanda = Comanda::create([
-            'usuario_id' => $usuario_id, 'mesa_id' => null, 
+            'usuario_id' => $usuario_id, 'mesa_id' => null,
             'status_comanda' => 'fechada', 'tipo_conta' => 'geral',
-            'valor_total' => 0, 'desconto' => $desconto ?? 0, 
+            'valor_total' => 0, 'desconto' => $desconto ?? 0,
+            'forma_pagamento' => $forma_pagamento,
             'data_hora_abertura' => $agora, 'data_hora_fechamento' => $agora
         ]);
 
@@ -168,7 +169,7 @@ class ComandaService
     /**
      * FECHAR PAGAMENTO (Com Verificação de Mesa)
      */
-    public function fechar_pagamento($id, $data_hora_fechamento, $desconto)
+    public function fechar_pagamento($id, $data_hora_fechamento, $desconto, $forma_pagamento = null)
     {
         $comanda = Comanda::findOrFail($id);
         if ($comanda->status_comanda !== 'aberta') throw new \Exception('A comanda não está aberta.');
@@ -178,6 +179,7 @@ class ComandaService
             'status_comanda' => 'fechada',
             'data_hora_fechamento' => Carbon::parse($data_hora_fechamento),
             'desconto' => $desconto_aplicado,
+            'forma_pagamento' => $forma_pagamento,
             'valor_total' => max(0, $comanda->valor_total - $desconto_aplicado)
         ]);
 

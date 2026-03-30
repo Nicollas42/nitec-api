@@ -169,6 +169,19 @@ class DashboardService
             ->orderBy('data_venda')
             ->get();
 
+        // 🟢 Agrupamento por forma de pagamento (Dinheiro / Pix / Débito / Crédito)
+        $vendas_por_forma_pagamento = DB::table('comandas')
+            ->where('status_comanda', 'fechada')
+            ->whereBetween('data_hora_fechamento', [$data_inicio, $data_fim])
+            ->select(
+                DB::raw('COALESCE(forma_pagamento, "nao_informado") as forma_pagamento'),
+                DB::raw('COUNT(id) as total_comandas'),
+                DB::raw('SUM(valor_total) as faturamento_total')
+            )
+            ->groupBy('forma_pagamento')
+            ->orderByDesc('faturamento_total')
+            ->get();
+
         return [
             'indicadores' => [
                 'faturamento_bruto' => round($faturamento_bruto, 2),
@@ -187,7 +200,8 @@ class DashboardService
             'vendas_por_dia' => $vendas_por_dia,
             'vendas_por_categoria' => $vendas_por_categoria, 
             'vendas_cronologicas' => $vendas_cronologicas,
-            'descontos_cronologicos' => $descontos_cronologicos 
+            'descontos_cronologicos' => $descontos_cronologicos,
+            'vendas_por_forma_pagamento' => $vendas_por_forma_pagamento,
         ];
     }
 
