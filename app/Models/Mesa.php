@@ -23,7 +23,14 @@ class Mesa extends Model
     protected $fillable = [
         'nome_mesa',
         'status_mesa',
-        'capacidade_pessoas'
+        'capacidade_pessoas',
+        'solicitando_atendimento',
+        'solicitacao_detalhes',
+    ];
+
+    protected $casts = [
+        'solicitando_atendimento' => 'boolean',
+        'solicitacao_detalhes'    => 'array',
     ];
 
     /**

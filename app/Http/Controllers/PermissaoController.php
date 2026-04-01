@@ -34,8 +34,9 @@ class PermissaoController extends Controller
                     'cancelar_vendas' => $perfil === 'gerente',
                     'aplicar_desconto' => $perfil === 'caixa' || $perfil === 'gerente',
                     'gerenciar_produtos' => $perfil === 'gerente',
-                    'gerenciar_equipe' => $perfil === 'gerente',
-                    'ver_analises' => $perfil === 'gerente',
+                    'gerenciar_equipe'   => $perfil === 'gerente',
+                    'ver_analises'       => $perfil === 'gerente',
+                    'gerenciar_cardapio' => $perfil === 'gerente',
                 ];
                 $matriz[] = $padrao;
             }

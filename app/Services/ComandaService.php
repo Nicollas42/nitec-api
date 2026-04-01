@@ -49,8 +49,9 @@ class ComandaService
 
     public function abrir_nova_comanda($dados, $usuario_id)
     {
-        $cliente_id = null;
-        if (!empty($dados['nome_cliente'])) {
+        $cliente_id = $dados['cliente_id'] ?? null;
+
+        if (!$cliente_id && !empty($dados['nome_cliente'])) {
             $cliente = Cliente::firstOrCreate(['nome_cliente' => $dados['nome_cliente']]);
             $cliente_id = $cliente->id;
         }

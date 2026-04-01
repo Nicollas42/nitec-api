@@ -17,6 +17,7 @@ use App\Http\Controllers\ConsultasProntasController;
 use App\Http\Controllers\CategoriasController;
 use App\Http\Controllers\AdicionalController;
 use App\Http\Controllers\CozinhaController;
+use App\Http\Controllers\CardapioController;
 use App\Http\Middleware\IdempotenciaMiddleware;
 use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
 use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
@@ -34,6 +35,18 @@ Route::middleware([
     });
 
     Route::post('/realizar-login', [AutenticacaoController::class, 'login']);
+
+    // ─── CARDÁPIO DIGITAL PÚBLICO (sem auth — acessado pelo cliente via QR Code) ───
+    Route::prefix('cardapio')->group(function () {
+        Route::get('/config',    [CardapioController::class, 'config_publica']);
+        Route::get('/produtos',  [CardapioController::class, 'produtos_publicos']);
+        Route::get('/mesa/{id}', [CardapioController::class, 'dados_mesa_publica']);
+        Route::post('/registrar',             [CardapioController::class, 'registrar_cliente']);
+        Route::post('/solicitar-atendimento', [CardapioController::class, 'solicitar_atendimento']);
+    });
+
+    Route::get('/midias/produtos/{path}', [ProdutoController::class, 'exibir_imagem_produto'])
+        ->where('path', '.*');
 
     Route::middleware('auth:sanctum')->group(function () {
         
@@ -115,5 +128,12 @@ Route::middleware([
         // Gestão de Permissões
         Route::get('/permissoes', [PermissaoController::class, 'index']);
         Route::post('/permissoes', [PermissaoController::class, 'store']);
+
+        // ─── CARDÁPIO DIGITAL ADMIN ───────────────────────────────────────────────
+        Route::get('/cardapio/admin/config',               [CardapioController::class, 'config_admin']);
+        Route::put('/cardapio/admin/config',               [CardapioController::class, 'atualizar_config']);
+        Route::put('/produtos/{id}/visibilidade-cardapio', [CardapioController::class, 'toggle_visibilidade']);
+        Route::post('/mesas/{id}/resolver-atendimento',                [MesaController::class, 'resolver_atendimento']);
+        Route::post('/mesas/{id}/resolver-atendimento-individual',    [MesaController::class, 'resolver_atendimento_individual']);
     });
 });

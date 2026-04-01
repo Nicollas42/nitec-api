@@ -55,8 +55,9 @@ class AutenticacaoController extends Controller
                     'cancelar_vendas' => $usuario->tipo_usuario === 'gerente',
                     'aplicar_desconto' => $usuario->tipo_usuario === 'caixa' || $usuario->tipo_usuario === 'gerente',
                     'gerenciar_produtos' => $usuario->tipo_usuario === 'gerente',
-                    'gerenciar_equipe' => $usuario->tipo_usuario === 'gerente',
-                    'ver_analises' => $usuario->tipo_usuario === 'gerente',
+                    'gerenciar_equipe'   => $usuario->tipo_usuario === 'gerente',
+                    'ver_analises'       => $usuario->tipo_usuario === 'gerente',
+                    'gerenciar_cardapio' => $usuario->tipo_usuario === 'gerente',
                 ];
             }
         }

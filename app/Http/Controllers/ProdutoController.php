@@ -9,6 +9,8 @@ use App\Models\ProdutoFornecedor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -93,6 +95,27 @@ class ProdutoController extends Controller
     }
 
     /**
+     * Serve a foto publica do produto, isolada por tenant.
+     */
+    public function exibir_imagem_produto(string $path)
+    {
+        $path = ltrim($path, '/');
+        $tenant_id = (string) (tenant()?->getTenantKey() ?? '');
+
+        abort_unless(
+            $tenant_id !== '' && str_starts_with($path, "tenants/{$tenant_id}/produtos/"),
+            404
+        );
+
+        abort_unless(Storage::disk('public')->exists($path), 404);
+
+        return response()->file(Storage::disk('public')->path($path), [
+            'Content-Type' => Storage::disk('public')->mimeType($path) ?: 'application/octet-stream',
+            'Cache-Control' => 'public, max-age=86400',
+        ]);
+    }
+
+    /**
      * Salva os dados principais do produto e sincroniza os relacionamentos.
      */
     private function salvar_produto(Request $request, ?Produto $produto = null): JsonResponse
@@ -100,7 +123,7 @@ class ProdutoController extends Controller
         $dados_validados = $this->validar_payload_produto($request, $produto?->id);
         $mensagem = $produto ? 'Produto atualizado com sucesso.' : 'Produto criado com sucesso.';
 
-        DB::transaction(function () use (&$produto, $dados_validados): void {
+        DB::transaction(function () use (&$produto, $dados_validados, $request): void {
             $dados_produto = collect($dados_validados)->only([
                 'nome_produto',
                 'codigo_interno',
@@ -118,6 +141,7 @@ class ProdutoController extends Controller
                 $produto = Produto::query()->create($dados_produto);
             }
 
+            $this->sincronizar_foto_produto($produto, $request, $dados_validados);
             $this->sincronizar_codigos_barras($produto, $dados_validados['codigos_barras_adicionais'] ?? []);
             $this->sincronizar_fornecedores_vinculados($produto, $dados_validados['fornecedores_vinculados'] ?? []);
 
@@ -142,6 +166,8 @@ class ProdutoController extends Controller
      */
     private function validar_payload_produto(Request $request, ?int $produto_id = null): array
     {
+        $this->normalizar_payload_request($request);
+
         $dados_validados = $request->validate([
             'nome_produto'                                       => 'required|string|max:255',
             'codigo_interno'                                     => [
@@ -168,6 +194,8 @@ class ProdutoController extends Controller
             'grupos_adicionais_ids'                                  => 'nullable|array',
             'grupos_adicionais_ids.*'                                => 'integer|exists:grupos_adicionais,id',
             'requer_cozinha'                                         => 'nullable|boolean',
+            'remover_foto_produto'                                   => 'nullable|boolean',
+            'foto_produto_arquivo'                                   => 'nullable|image|max:5120',
         ]);
 
         $dados_validados['unidade_medida']          = $dados_validados['unidade_medida'] ?? 'UN';
@@ -175,11 +203,34 @@ class ProdutoController extends Controller
         $dados_validados['margem_lucro_percentual']  = $dados_validados['margem_lucro_percentual'] ?? 0;
         $dados_validados['codigos_barras_adicionais'] = $this->normalizar_codigos_barras($dados_validados['codigos_barras_adicionais'] ?? []);
         $dados_validados['fornecedores_vinculados']   = $this->normalizar_fornecedores_vinculados($dados_validados['fornecedores_vinculados'] ?? []);
+        $dados_validados['remover_foto_produto']      = (bool) ($dados_validados['remover_foto_produto'] ?? false);
 
         $this->validar_codigos_barras_unicos($dados_validados['codigos_barras_adicionais'], $produto_id);
         $this->validar_fornecedores_unicos($dados_validados['fornecedores_vinculados']);
 
         return $dados_validados;
+    }
+
+    /**
+     * Normaliza payloads enviados como multipart/form-data com JSON agregado.
+     */
+    private function normalizar_payload_request(Request $request): void
+    {
+        if ($request->filled('payload_json')) {
+            $payload = json_decode((string) $request->input('payload_json'), true);
+
+            if (!is_array($payload)) {
+                throw ValidationException::withMessages([
+                    'payload_json' => ['O payload do produto esta invalido.'],
+                ]);
+            }
+
+            $request->merge($payload);
+        }
+
+        if ($request->hasFile('foto_produto_arquivo')) {
+            $request->merge(['remover_foto_produto' => false]);
+        }
     }
 
     /**
@@ -358,6 +409,53 @@ class ProdutoController extends Controller
     }
 
     /**
+     * Armazena, substitui ou remove a foto do produto.
+     *
+     * @param array<string, mixed> $dados_validados
+     */
+    private function sincronizar_foto_produto(Produto $produto, Request $request, array $dados_validados): void
+    {
+        $path_antigo = $produto->foto_produto_path;
+
+        if ($request->hasFile('foto_produto_arquivo')) {
+            $arquivo = $request->file('foto_produto_arquivo');
+            $novo_path = $arquivo->storeAs(
+                $this->diretorio_midias_produtos_tenant(),
+                $this->gerar_nome_arquivo_foto_produto($produto, $arquivo->getClientOriginalExtension()),
+                'public'
+            );
+
+            $produto->update(['foto_produto_path' => $novo_path]);
+
+            if ($path_antigo && $path_antigo !== $novo_path) {
+                Storage::disk('public')->delete($path_antigo);
+            }
+
+            return;
+        }
+
+        if (!empty($dados_validados['remover_foto_produto']) && $path_antigo) {
+            Storage::disk('public')->delete($path_antigo);
+            $produto->update(['foto_produto_path' => null]);
+        }
+    }
+
+    private function diretorio_midias_produtos_tenant(): string
+    {
+        $tenant_id = (string) (tenant()?->getTenantKey() ?? 'tenant');
+
+        return "tenants/{$tenant_id}/produtos";
+    }
+
+    private function gerar_nome_arquivo_foto_produto(Produto $produto, ?string $extensao_original = null): string
+    {
+        $base = Str::slug($produto->codigo_interno ?: $produto->nome_produto ?: 'produto');
+        $extensao = strtolower($extensao_original ?: 'jpg');
+
+        return "{$base}-{$produto->id}-" . Str::random(10) . ".{$extensao}";
+    }
+
+    /**
      * Mapeia o produto para o payload enxuto de listagem.
      *
      * @return array<string, mixed>
@@ -386,12 +484,14 @@ class ProdutoController extends Controller
             'preco_custo_medio'               => $produto->preco_custo_medio,
             'margem_lucro_percentual'         => $produto->margem_lucro_percentual,
             'categoria'                       => $produto->categoria,
+            'foto_produto_url'                => $produto->foto_produto_url,
             'estoque_atual'                   => $produto->estoque_atual,
             'data_validade'                   => $data_validade_proxima,
             'quantidade_fornecedores_vinculados' => $produto->produto_fornecedores->count(),
             'pode_expandir_estoque'           => count($estoque_por_fornecedor) > 1,
             'estoque_por_fornecedor'          => $estoque_por_fornecedor,
             'requer_cozinha'                  => (bool) $produto->requer_cozinha,
+            'visivel_cardapio'                => (bool) $produto->visivel_cardapio,
             'tem_adicionais'                  => $produto->relationLoaded('grupos_adicionais') && $produto->grupos_adicionais->count() > 0,
             'grupos_adicionais'               => $produto->relationLoaded('grupos_adicionais')
                 ? $produto->grupos_adicionais->map(fn ($g) => [

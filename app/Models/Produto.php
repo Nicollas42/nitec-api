@@ -27,10 +27,13 @@ class Produto extends Model
         'estoque_atual',
         'data_validade',
         'requer_cozinha',
+        'visivel_cardapio',
+        'foto_produto_path',
     ];
 
     protected $casts = [
-        'requer_cozinha' => 'boolean',
+        'requer_cozinha'   => 'boolean',
+        'visivel_cardapio' => 'boolean',
     ];
 
     /**
@@ -80,5 +83,17 @@ class Produto extends Model
     public function grupos_adicionais(): BelongsToMany
     {
         return $this->belongsToMany(GrupoAdicional::class, 'produto_grupos_adicionais');
+    }
+
+    /**
+     * Retorna a URL publica da foto do produto no tenant atual.
+     */
+    public function getFotoProdutoUrlAttribute(): ?string
+    {
+        if (!$this->foto_produto_path) {
+            return null;
+        }
+
+        return url('/api/midias/produtos/' . ltrim($this->foto_produto_path, '/'));
     }
 }
