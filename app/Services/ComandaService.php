@@ -38,7 +38,7 @@ class ComandaService
     {
         $hoje = Carbon::today();
         return Comanda::with(['buscar_mesa', 'buscar_cliente', 'listar_itens.buscar_produto', 'listar_itens.adicionais.buscar_item_adicional'])
-            ->where('status_comanda', 'aberta')
+            ->whereIn('status_comanda', ['aberta', 'pendente'])
             ->orWhere(function($query) use ($hoje) {
                 $query->whereIn('status_comanda', ['fechada', 'cancelada'])
                       ->whereDate('updated_at', $hoje);
@@ -184,16 +184,7 @@ class ComandaService
             'valor_total' => max(0, $comanda->valor_total - $desconto_aplicado)
         ]);
 
-        // 🟢 SEGURANÇA: Só libera a mesa se for a ÚLTIMA comanda aberta
-        if ($comanda->mesa_id) {
-            $outras_abertas = Comanda::where('mesa_id', $comanda->mesa_id)
-                ->where('status_comanda', 'aberta')
-                ->count();
-
-            if ($outras_abertas === 0) {
-                Mesa::where('id', $comanda->mesa_id)->update(['status_mesa' => 'livre']);
-            }
-        }
+        $this->liberar_mesa_se_vazia($comanda->mesa_id);
     }
 
     /**
@@ -205,23 +196,14 @@ class ComandaService
     public function cancelar_ou_calote($id, $motivo, $retornar_estoque, $usuario_id)
     {
         $comanda = Comanda::with('listar_itens.buscar_produto')->findOrFail($id);
-        
+
         $comanda->update([
-            'status_comanda' => 'cancelada', 
-            'motivo_cancelamento' => $motivo, 
+            'status_comanda' => 'cancelada',
+            'motivo_cancelamento' => $motivo,
             'data_hora_fechamento' => Carbon::now()
         ]);
 
-        // 🟢 SEGURANÇA: Só libera a mesa se for a ÚLTIMA comanda aberta
-        if ($comanda->mesa_id) {
-            $outras_abertas = Comanda::where('mesa_id', $comanda->mesa_id)
-                ->where('status_comanda', 'aberta')
-                ->count();
-
-            if ($outras_abertas === 0) {
-                Mesa::where('id', $comanda->mesa_id)->update(['status_mesa' => 'livre']);
-            }
-        }
+        $this->liberar_mesa_se_vazia($comanda->mesa_id);
 
         foreach ($comanda->listar_itens as $item) {
             if ($retornar_estoque) {
@@ -241,6 +223,62 @@ class ComandaService
                     'custo_total_perda' => $custo_total_perda ?: (($item->buscar_produto->preco_custo_medio ?? 0) * $item->quantidade)
                 ]);
             }
+        }
+    }
+
+    /**
+     * Aprova uma comanda pendente → status 'aberta', mesa → 'ocupada'.
+     */
+    public function aprovar_comanda($id)
+    {
+        $comanda = Comanda::findOrFail($id);
+        if ($comanda->status_comanda !== 'pendente') {
+            throw new \Exception('Apenas comandas pendentes podem ser aprovadas.');
+        }
+
+        $comanda->update(['status_comanda' => 'aberta']);
+
+        if ($comanda->mesa_id) {
+            Mesa::where('id', $comanda->mesa_id)->update(['status_mesa' => 'ocupada']);
+        }
+
+        return $comanda;
+    }
+
+    /**
+     * Rejeita uma comanda pendente → exclui a comanda.
+     * Libera a mesa se não houver mais comandas ativas.
+     */
+    public function rejeitar_comanda($id)
+    {
+        $comanda = Comanda::findOrFail($id);
+        if ($comanda->status_comanda !== 'pendente') {
+            throw new \Exception('Apenas comandas pendentes podem ser rejeitadas.');
+        }
+
+        $mesa_id = $comanda->mesa_id;
+        $comanda->forceDelete();
+
+        $this->liberar_mesa_se_vazia($mesa_id);
+    }
+
+    /**
+     * Só libera a mesa (status → livre, sessao_uuid → null) se não houver
+     * mais nenhuma comanda aberta ou pendente vinculada a ela.
+     */
+    public function liberar_mesa_se_vazia($mesa_id)
+    {
+        if (!$mesa_id) return;
+
+        $ativas = Comanda::where('mesa_id', $mesa_id)
+            ->whereIn('status_comanda', ['aberta', 'pendente'])
+            ->count();
+
+        if ($ativas === 0) {
+            Mesa::where('id', $mesa_id)->update([
+                'status_mesa'  => 'livre',
+                'sessao_uuid'  => null,
+            ]);
         }
     }
 }

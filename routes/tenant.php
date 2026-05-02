@@ -38,10 +38,13 @@ Route::middleware([
 
     // ─── CARDÁPIO DIGITAL PÚBLICO (sem auth — acessado pelo cliente via QR Code) ───
     Route::prefix('cardapio')->group(function () {
-        Route::get('/config',    [CardapioController::class, 'config_publica']);
-        Route::get('/produtos',  [CardapioController::class, 'produtos_publicos']);
-        Route::get('/mesa/{id}', [CardapioController::class, 'dados_mesa_publica']);
+        Route::get('/config',                 [CardapioController::class, 'config_publica']);
+        Route::get('/mesa/{id}',              [CardapioController::class, 'dados_mesa_publica']);
+        Route::get('/pdfs/{id}/arquivo',      [CardapioController::class, 'servir_pdf_publico']);
+        Route::post('/login',                 [CardapioController::class, 'login_cliente']);
         Route::post('/registrar',             [CardapioController::class, 'registrar_cliente']);
+        Route::get('/comanda/{id}/status',    [CardapioController::class, 'status_comanda_publica']);
+        Route::get('/sessao/{token}',         [CardapioController::class, 'sessao_por_token']);
         Route::post('/solicitar-atendimento', [CardapioController::class, 'solicitar_atendimento']);
     });
 
@@ -130,10 +133,18 @@ Route::middleware([
         Route::post('/permissoes', [PermissaoController::class, 'store']);
 
         // ─── CARDÁPIO DIGITAL ADMIN ───────────────────────────────────────────────
-        Route::get('/cardapio/admin/config',               [CardapioController::class, 'config_admin']);
-        Route::put('/cardapio/admin/config',               [CardapioController::class, 'atualizar_config']);
-        Route::put('/produtos/{id}/visibilidade-cardapio', [CardapioController::class, 'toggle_visibilidade']);
+        Route::get('/cardapio/admin/config', [CardapioController::class, 'config_admin']);
+        Route::put('/cardapio/admin/config', [CardapioController::class, 'atualizar_config']);
+        Route::get('/cardapio/admin/pdfs',           [CardapioController::class, 'listar_pdfs_admin']);
+        Route::post('/cardapio/admin/pdfs',          [CardapioController::class, 'upload_pdf_admin']);
+        Route::put('/cardapio/admin/pdfs/{id}',      [CardapioController::class, 'atualizar_pdf_admin']);
+        Route::delete('/cardapio/admin/pdfs/{id}',   [CardapioController::class, 'excluir_pdf_admin']);
         Route::post('/mesas/{id}/resolver-atendimento',                [MesaController::class, 'resolver_atendimento']);
         Route::post('/mesas/{id}/resolver-atendimento-individual',    [MesaController::class, 'resolver_atendimento_individual']);
+
+        // Aprovação/rejeição de comandas pendentes (garçom)
+        Route::post('/comandas/{id}/aprovar',              [ComandaController::class, 'aprovar_comanda']);
+        Route::post('/comandas/{id}/rejeitar',             [ComandaController::class, 'rejeitar_comanda']);
+        Route::post('/mesas/{id}/aprovar-todas-pendentes', [ComandaController::class, 'aprovar_todas_pendentes']);
     });
 });

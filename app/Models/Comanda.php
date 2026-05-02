@@ -12,7 +12,8 @@ class Comanda extends Model
 
     protected $fillable = [
         'mesa_id', 'cliente_id', 'usuario_id', 'status_comanda', 'motivo_cancelamento',
-        'tipo_conta', 'valor_total', 'desconto', 'forma_pagamento', 'data_hora_abertura', 'data_hora_fechamento'
+        'tipo_conta', 'valor_total', 'desconto', 'forma_pagamento',
+        'data_hora_abertura', 'data_hora_fechamento', 'token_cliente',
     ];
     
     /**

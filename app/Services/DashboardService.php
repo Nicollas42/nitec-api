@@ -268,7 +268,7 @@ class DashboardService
                     'descricao' => "Faturou R$ {$comanda->valor_total}.",
                     'usuario' => $comanda->buscar_usuario->name ?? 'Sistema',
                     'detalhes_extras' => "Itens: " . $itens_str . $aviso_desconto, 
-                    'cliente' => $comanda->buscar_cliente->nome_cliente ?? ($comanda->nome_cliente ?? null),
+                    'cliente' => ($comanda->buscar_cliente->nome_cliente ?? $comanda->nome_cliente ?? null) . ($comanda->buscar_cliente?->telefone ? ' (' . $comanda->buscar_cliente->telefone . ')' : ''),
                     'comanda_raw' => $comanda 
                 ];
             });

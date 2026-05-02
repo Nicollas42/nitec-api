@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Mesa;
 use App\Models\PedidoCozinha;
-use App\Services\ComandaService;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -13,15 +12,11 @@ use Illuminate\Http\JsonResponse;
  */
 class MesaController extends Controller
 {
-    public function __construct(private ComandaService $comandaService) {}
 
     /**
-     * Resolve todos os pedidos digitais empilhados, lançando os itens nas
-     * respectivas comandas antes de limpar a solicitação de atendimento.
-     */
-    /**
-     * Resolve todos os pedidos digitais empilhados, lançando os itens nas
-     * respectivas comandas antes de limpar a solicitação de atendimento.
+     * Resolve TODAS as chamadas de atendimento empilhadas, limpando a flag
+     * da mesa. As solicitações hoje contêm apenas nome + telefone do cliente
+     * que chamou — o garçom atende presencialmente.
      *
      * @param int $id ID da mesa
      * @return JsonResponse
@@ -29,15 +24,6 @@ class MesaController extends Controller
     public function resolver_atendimento(int $id): JsonResponse
     {
         $mesa = Mesa::findOrFail($id);
-
-        $pilha = $mesa->solicitacao_detalhes ?? [];
-
-        // Suporte ao formato antigo (objeto único em vez de array de pedidos)
-        if (!empty($pilha) && array_is_list($pilha) === false) {
-            $pilha = [$pilha];
-        }
-
-        $this->lancar_itens_da_pilha($pilha);
 
         $mesa->update([
             'solicitando_atendimento' => false,
@@ -48,8 +34,7 @@ class MesaController extends Controller
     }
 
     /**
-     * Resolve um pedido individual da pilha pelo índice (0-based).
-     * Remove apenas aquele pedido e lança seus itens na comanda.
+     * Resolve uma chamada individual da pilha pelo índice (0-based).
      * Se a pilha ficar vazia após a remoção, limpa o flag de atendimento.
      *
      * @param Request $requisicao
@@ -74,13 +59,10 @@ class MesaController extends Controller
         $indice = (int) $dados['indice'];
 
         if (!isset($pilha[$indice])) {
-            return response()->json(['mensagem' => 'Pedido nao encontrado na pilha.'], 404);
+            return response()->json(['mensagem' => 'Chamada nao encontrada na pilha.'], 404);
         }
 
-        $pedido = $pilha[$indice];
-        $this->lancar_itens_da_pilha([$pedido]);
-
-        // Remove o pedido resolvido e re-indexa
+        // Remove a chamada resolvida e re-indexa
         array_splice($pilha, $indice, 1);
 
         $pilha_vazia = empty($pilha);
@@ -91,38 +73,6 @@ class MesaController extends Controller
         ]);
 
         return response()->json(['sucesso' => true]);
-    }
-
-    /**
-     * Lança os itens de cada pedido da pilha nas respectivas comandas.
-     *
-     * @param array $pilha Array de pedidos com comanda_id e produtos_desejados
-     * @return void
-     */
-    private function lancar_itens_da_pilha(array $pilha): void
-    {
-        foreach ($pilha as $pedido) {
-            $comanda_id = $pedido['comanda_id'] ?? null;
-            $produtos   = $pedido['produtos_desejados'] ?? [];
-
-            if (!$comanda_id || empty($produtos)) {
-                continue;
-            }
-
-            $itens = array_map(fn($p) => [
-                'produto_id'     => $p['produto_id'],
-                'quantidade'     => (int) $p['quantidade'],
-                'preco_unitario' => (float) $p['preco_venda'],
-                'adicionais'     => [],
-            ], $produtos);
-
-            try {
-                $this->comandaService->adicionar_itens($comanda_id, $itens);
-            } catch (\Throwable $e) {
-                report($e);
-                // Continua para os próximos pedidos mesmo se um falhar
-            }
-        }
     }
 
     /**
@@ -173,8 +123,8 @@ class MesaController extends Controller
     {
         try {
             $informacoes_da_mesa = Mesa::with(['listar_comandas' => function($consulta_sql) {
-                $consulta_sql->where('status_comanda', 'aberta')
-                             ->orderBy('id')  // garante ordem estável a cada polling
+                $consulta_sql->whereIn('status_comanda', ['aberta', 'pendente'])
+                             ->orderBy('id')
                              ->with(['listar_itens' => fn($q) => $q->orderBy('id'), 'listar_itens.buscar_produto', 'listar_itens.adicionais.buscar_item_adicional', 'buscar_cliente', 'buscar_usuario']);
             }])->findOrFail($id_da_mesa);
 

@@ -26,6 +26,7 @@ class Mesa extends Model
         'capacidade_pessoas',
         'solicitando_atendimento',
         'solicitacao_detalhes',
+        'sessao_uuid',
     ];
 
     protected $casts = [

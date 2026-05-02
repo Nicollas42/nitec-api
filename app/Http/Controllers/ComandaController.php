@@ -153,6 +153,61 @@ class ComandaController extends Controller
     }
 
     /**
+     * Aprova uma comanda pendente (garçom confirma a entrada do cliente).
+     */
+    public function aprovar_comanda($id)
+    {
+        DB::beginTransaction();
+        try {
+            $comanda = $this->comandaService->aprovar_comanda($id);
+            DB::commit();
+            return response()->json(['sucesso' => true, 'mensagem' => 'Comanda aprovada!', 'comanda' => $comanda]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['sucesso' => false, 'mensagem' => $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * Aprova todas as comandas pendentes de uma mesa.
+     */
+    public function aprovar_todas_pendentes($mesa_id)
+    {
+        DB::beginTransaction();
+        try {
+            $pendentes = \App\Models\Comanda::where('mesa_id', $mesa_id)
+                ->where('status_comanda', 'pendente')
+                ->get();
+
+            foreach ($pendentes as $comanda) {
+                $this->comandaService->aprovar_comanda($comanda->id);
+            }
+
+            DB::commit();
+            return response()->json(['sucesso' => true, 'mensagem' => "{$pendentes->count()} comanda(s) aprovada(s)!"]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['sucesso' => false, 'mensagem' => $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * Rejeita uma comanda pendente (garçom recusa a entrada do cliente).
+     */
+    public function rejeitar_comanda($id)
+    {
+        DB::beginTransaction();
+        try {
+            $this->comandaService->rejeitar_comanda($id);
+            DB::commit();
+            return response()->json(['sucesso' => true, 'mensagem' => 'Comanda rejeitada.']);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['sucesso' => false, 'mensagem' => $e->getMessage()], 400);
+        }
+    }
+
+    /**
      * Altera a quantidade de um item ja lancado, refletindo a baixa ou a devolucao no FIFO.
      */
     public function alterar_quantidade(Request $requisicao, $id_item) 
